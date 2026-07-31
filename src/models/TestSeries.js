@@ -1,0 +1,28 @@
+import mongoose from 'mongoose';
+
+const testSeriesSchema = new mongoose.Schema({
+  examId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Exam',
+    required: true,
+  },
+  title: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  description: String,
+  price: {
+    type: Number,
+    default: 0, // 0 means Free
+  },
+  tags: [String],
+  active: {
+    type: Boolean,
+    default: true,
+  },
+}, {
+  timestamps: true,
+});
+
+export default mongoose.model('TestSeries', testSeriesSchema);

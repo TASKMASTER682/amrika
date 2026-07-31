@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+
+# env files (real .env has secrets; .env.example is safe to commit)
+.env
+.env*.local
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# os / editor
+.DS_Store
+Thumbs.db
+*.pem
+*.crt
+*.key
+
+# build / test
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# runtime
+uploads/
+tmp/
+
+# malformed leftover dir (empty)
+src/{config,models,middleware,utils,validators,controllers,routes,seed}
+
+# agent config (local only)
+AGENTS.md
+CLAUDE.md
+.agents/
+.agent/
+.claude/
+.kilo/
+.kilocode/
+skills.md
+skills-lock.json
