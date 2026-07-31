@@ -6,9 +6,11 @@
 cd backend
 npm install
 cp .env.example .env      # then fill in real secrets
-npm run seed               # optional: creates demo admin/student + one mock test
 npm run dev                # starts on http://localhost:5000
 ```
+
+No seed scripts or demo data — all data comes straight from MongoDB (create users
+via the app's signup, or insert directly into the database).
 
 Requires a running MongoDB instance — either local (`mongodb://127.0.0.1:27017/examos`)
 or a connection string from MongoDB Atlas in `MONGO_URI`.
@@ -54,14 +56,4 @@ src/
   validators/   Zod schemas per feature
   controllers/  business logic
   routes/       thin route -> middleware -> controller wiring
-  seed/         local dev seed script
 ```
-
-## Default demo accounts (after `npm run seed`)
-
-| Role    | Email                | Password       |
-|---------|-----------------------|----------------|
-| Admin   | admin@examos.dev      | ChangeMe123!   |
-| Student | student@examos.dev    | ChangeMe123!   |
-
-Change these immediately if you ever deploy this beyond your own machine.
