@@ -43,6 +43,11 @@ const testAttemptSchema = new mongoose.Schema({
     ref: 'Test',
     required: true,
   },
+  testSeriesId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'TestSeries',
+    default: null,
+  },
   status: {
     type: String,
     enum: ['In Progress', 'Submitted'],

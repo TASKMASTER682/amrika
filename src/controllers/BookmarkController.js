@@ -1,4 +1,5 @@
 import Bookmark from '../models/Bookmark.js';
+import { awardBookmark } from '../services/GamificationService.js';
 
 export const createBookmark = async (req, res, next) => {
   try {
@@ -14,6 +15,10 @@ export const createBookmark = async (req, res, next) => {
       { folderName: folderName || 'Starred Questions', notes },
       { upsert: true, new: true }
     );
+
+    if (bookmark.createdAt && Date.now() - new Date(bookmark.createdAt).getTime() < 5000) {
+      awardBookmark(studentId).catch(() => {});
+    }
 
     res.status(201).json({
       success: true,

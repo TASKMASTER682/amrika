@@ -1,10 +1,19 @@
 import TestSeries from '../models/TestSeries.js';
+import { logAudit } from '../services/AuditService.js';
 
 export const listTestSeries = async (req, res, next) => {
   try {
-    const { examId } = req.query;
+    const { examId, featured, active, all } = req.query;
     const filter = {};
     if (examId) filter.examId = examId;
+    if (featured === 'true') filter.featured = true;
+
+    const isStaff = req.user?.role === 'Super Admin' || req.user?.role === 'Content Manager';
+    // Students should only see active series; staff can request all via ?all=true
+    if (active === 'true' || (!isStaff && all !== 'true')) {
+      filter.active = true;
+    }
+
     const series = await TestSeries.find(filter).populate('examId', 'name code').sort({ title: 1 });
     res.json({ success: true, data: series });
   } catch (error) {
@@ -27,6 +36,12 @@ export const getTestSeriesById = async (req, res, next) => {
 export const createTestSeries = async (req, res, next) => {
   try {
     const series = await TestSeries.create(req.body);
+    await logAudit({
+      userId: req.user._id,
+      action: 'TESTSERIES_CREATE',
+      details: `Created test series "${series.title}"`,
+      req,
+    });
     res.status(201).json({ success: true, data: series });
   } catch (error) {
     next(error);
@@ -39,6 +54,12 @@ export const updateTestSeries = async (req, res, next) => {
     if (!series) {
       return res.status(404).json({ success: false, message: 'Test Series not found.' });
     }
+    await logAudit({
+      userId: req.user._id,
+      action: 'TESTSERIES_UPDATE',
+      details: `Updated test series "${series.title}"`,
+      req,
+    });
     res.json({ success: true, data: series });
   } catch (error) {
     next(error);
@@ -69,7 +90,39 @@ export const searchTestSeries = async (req, res, next) => {
 export const deleteTestSeries = async (req, res, next) => {
   try {
     await TestSeries.findByIdAndDelete(req.params.id);
+    await logAudit({
+      userId: req.user._id,
+      action: 'TESTSERIES_DELETE',
+      details: `Deleted test series ${req.params.id}`,
+      req,
+    });
     res.json({ success: true, message: 'Test Series deleted.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Upload a banner image for a test series (base64 data URL, stored inline)
+// Pass `banner: null` to remove the banner.
+export const uploadBanner = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { banner } = req.body;
+    if (banner === undefined) {
+      return res.status(400).json({ success: false, message: 'Banner field is required (send null to remove).' });
+    }
+    const update = banner === null ? { $unset: { banner: '' } } : { banner };
+    const series = await TestSeries.findByIdAndUpdate(id, update, { new: true });
+    if (!series) {
+      return res.status(404).json({ success: false, message: 'Test Series not found.' });
+    }
+    await logAudit({
+      userId: req.user._id,
+      action: 'TESTSERIES_BANNER',
+      details: banner === null ? `Removed banner for "${series.title}"` : `Updated banner for "${series.title}"`,
+      req,
+    });
+    res.json({ success: true, data: series });
   } catch (error) {
     next(error);
   }

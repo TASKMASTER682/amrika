@@ -7,7 +7,10 @@ const router = express.Router();
 router.post('/register', AuthController.register);
 router.post('/login', AuthController.login);
 router.post('/logout', AuthController.logout);
+router.post('/otp-request', AuthController.otpRequest);
+router.post('/otp-login', AuthController.otpLogin);
 router.get('/me', protect, AuthController.getMe);
 router.patch('/preferences', protect, AuthController.updatePreferences);
+router.get('/referral', protect, AuthController.myReferral);
 
 export default router;

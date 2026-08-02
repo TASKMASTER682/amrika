@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['Super Admin', 'User'],
+    enum: ['Super Admin', 'Content Manager', 'Support', 'User'],
     default: 'User',
   },
   active: {
@@ -47,6 +47,36 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  lastActiveAt: Date,
+  signupSource: { type: String, default: 'web' },
+  referralCode: { type: String, unique: true, sparse: true, uppercase: true },
+  referredBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  // Phone / OTP auth (India market) — optional, enabled later
+  phone: { type: String, sparse: true, trim: true },
+  phoneVerified: { type: Boolean, default: false },
+  otp: { type: String, default: null },
+  otpExpires: { type: Date, default: null },
+  otpAttempts: { type: Number, default: 0 },
+  subscription: {
+    planId: { type: mongoose.Schema.Types.ObjectId, ref: 'Plan' },
+    startedAt: Date,
+    expiresAt: Date,
+    status: { type: String, enum: ['none', 'active', 'expired'], default: 'none' },
+  },
+  // Gamification
+  xp: { type: Number, default: 0 },
+  level: { type: Number, default: 1 },
+  streak: { type: Number, default: 0 },
+  bestStreak: { type: Number, default: 0 },
+  lastActiveDay: Date,
+  badges: [{
+    code: { type: String },
+    name: { type: String },
+    earnedAt: { type: Date, default: Date.now },
+  }],
 }, {
   timestamps: true,
 });

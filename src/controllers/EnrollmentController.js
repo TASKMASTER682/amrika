@@ -1,5 +1,7 @@
 import Enrollment from '../models/Enrollment.js';
 import TestSeries from '../models/TestSeries.js';
+import Order from '../models/Order.js';
+import { hasTestSeriesAccess } from '../services/AccessService.js';
 
 export const enroll = async (req, res, next) => {
   try {
@@ -8,6 +10,19 @@ export const enroll = async (req, res, next) => {
     if (!testSeries) {
       return res.status(404).json({ success: false, message: 'Test Series not found.' });
     }
+    
+    // Check if paid test series - require payment or subscription
+    if (testSeries.price > 0) {
+      const hasAccess = await hasTestSeriesAccess(req.user, testSeriesId);
+      if (!hasAccess) {
+        return res.status(403).json({
+          success: false,
+          code: 'PAYMENT_REQUIRED',
+          message: 'This is a paid test series. Please purchase it first to enroll.',
+        });
+      }
+    }
+    
     const existing = await Enrollment.findOne({ userId: req.user._id, testSeriesId });
     if (existing) {
       return res.status(409).json({ success: false, message: 'Already enrolled in this test series.' });

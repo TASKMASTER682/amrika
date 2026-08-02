@@ -33,6 +33,9 @@ const testSchema = new mongoose.Schema({
   passingMarks: { type: Number, default: 0 },
   publishDate: { type: Date, default: Date.now },
   expiryDate: Date,
+  scheduled: { type: Boolean, default: false }, // fixed-slot scheduled/live test
+  startTime: Date, // scheduled start (window open)
+  endTime: Date, // scheduled end (window close)
   attemptLimit: { type: Number, default: 1 }, // 0 or 1 etc.
   calculatorAllowed: { type: Boolean, default: false },
   fullscreenRequired: { type: Boolean, default: true },

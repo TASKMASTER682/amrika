@@ -1,9 +1,9 @@
+import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -19,8 +19,18 @@ import examRoutes from './routes/examRoutes.js';
 import testSeriesRoutes from './routes/testSeriesRoutes.js';
 import enrollmentRoutes from './routes/enrollmentRoutes.js';
 import userRoutes from './routes/userRoutes.js';
-
-dotenv.config();
+import planRoutes from './routes/planRoutes.js';
+import orderRoutes from './routes/orderRoutes.js';
+import couponRoutes from './routes/couponRoutes.js';
+import announcementRoutes from './routes/announcementRoutes.js';
+import analyticsRoutes from './routes/analyticsRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import razorpayRoutes from './routes/razorpayRoutes.js';
+import leaderboardRoutes from './routes/leaderboardRoutes.js';
+import studyMaterialRoutes from './routes/studyMaterialRoutes.js';
+import doubtRoutes from './routes/doubtRoutes.js';
+import studentAnalyticsRoutes from './routes/studentAnalyticsRoutes.js';
+import blogRoutes from './routes/blogRoutes.js';
 
 // Connect to Database
 connectDB();
@@ -33,6 +43,16 @@ import './models/TestSeries.js';
 import './models/Test.js';
 import './models/Question.js';
 import './models/Enrollment.js';
+import './models/Plan.js';
+import './models/Order.js';
+import './models/Coupon.js';
+import './models/Announcement.js';
+import './models/Referral.js';
+import './models/RazorpayConfig.js';
+import './models/StudyMaterial.js';
+import './models/Doubt.js';
+import './models/DoubtReply.js';
+import './models/Blog.js';
 
 
 const app = express();
@@ -79,6 +99,18 @@ app.use('/api/exams', examRoutes);
 app.use('/api/test-series', testSeriesRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/plans', planRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/coupons', couponRoutes);
+app.use('/api/announcements', announcementRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/admin/razorpay', razorpayRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/materials', studyMaterialRoutes);
+app.use('/api/doubts', doubtRoutes);
+app.use('/api/my-analytics', studentAnalyticsRoutes);
+app.use('/api/blogs', blogRoutes);
 
 // Test endpoint
 app.get('/health', (req, res) => {
@@ -92,3 +124,4 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`ExamOS Enterprise Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 });
+

@@ -6,29 +6,34 @@ import { protect, authorize } from '../middleware/auth.js';
 const router = express.Router();
 
 const adminRoles = ['Super Admin'];
+const contentRoles = ['Super Admin', 'Content Manager'];
 
 router.use(protect);
 
 // Parse files (CSV/DOCX/PDF/XLSX) to Staging
-router.post('/parse', authorize(...adminRoles), upload.single('file'), parseFile);
+router.post('/parse', authorize(...contentRoles), upload.single('file'), parseFile);
 
 // Paste questions from raw text (saves directly as unused)
-router.post('/paste', authorize(...adminRoles), QuestionController.pasteQuestions);
+router.post('/paste', authorize(...contentRoles), QuestionController.pasteQuestions);
+
+// Duplicate detection
+router.get('/duplicates', authorize(...contentRoles), QuestionController.findDuplicateQuestions);
+router.get('/staged/duplicates', authorize(...contentRoles), QuestionController.findStagedDuplicates);
 
 // Master Question bank routes
 router.get('/', QuestionController.listQuestions);
 router.get('/subjects', QuestionController.listSubjects);
-router.post('/bulk-delete', authorize(...adminRoles), QuestionController.bulkDeleteQuestions);
+router.post('/bulk-delete', authorize(...contentRoles), QuestionController.bulkDeleteQuestions);
 router.get('/:id', QuestionController.getQuestionById);
-router.post('/', authorize(...adminRoles), QuestionController.createQuestion);
-router.put('/:id', authorize(...adminRoles), QuestionController.updateQuestion);
-router.delete('/:id', authorize(...adminRoles), QuestionController.deleteQuestion);
+router.post('/', authorize(...contentRoles), QuestionController.createQuestion);
+router.put('/:id', authorize(...contentRoles), QuestionController.updateQuestion);
+router.delete('/:id', authorize(...contentRoles), QuestionController.deleteQuestion);
 
 // Staging routes
-router.get('/staged/all', authorize(...adminRoles), QuestionController.getStagedQuestions);
-router.put('/staged/:id', authorize(...adminRoles), QuestionController.updateStagedQuestion);
-router.delete('/staged/:id', authorize(...adminRoles), QuestionController.deleteStagedQuestion);
-router.post('/staged/approve', authorize(...adminRoles), QuestionController.approveStagedQuestions);
-router.post('/staged/approve-to-test', authorize(...adminRoles), QuestionController.approveStagedQuestionsToTest);
+router.get('/staged/all', authorize(...contentRoles), QuestionController.getStagedQuestions);
+router.put('/staged/:id', authorize(...contentRoles), QuestionController.updateStagedQuestion);
+router.delete('/staged/:id', authorize(...contentRoles), QuestionController.deleteStagedQuestion);
+router.post('/staged/approve', authorize(...contentRoles), QuestionController.approveStagedQuestions);
+router.post('/staged/approve-to-test', authorize(...contentRoles), QuestionController.approveStagedQuestionsToTest);
 
 export default router;

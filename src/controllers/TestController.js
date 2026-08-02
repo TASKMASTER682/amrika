@@ -1,5 +1,6 @@
 import Test from '../models/Test.js';
 import Question from '../models/Question.js';
+import { hasTestSeriesAccess, getTestAvailability } from '../services/AccessService.js';
 
 export const createTest = async (req, res, next) => {
   try {
@@ -21,10 +22,20 @@ export const listTests = async (req, res, next) => {
 
     const tests = await Test.find(filter)
       .populate('examId', 'name')
-      .populate('testSeriesId', 'title')
+      .populate('testSeriesId', 'title price')
       .sort({ createdAt: -1 });
 
-    res.json({ success: true, data: tests });
+    const enriched = [];
+    for (const test of tests) {
+      let isLocked = false;
+      if (req.user?.role !== 'Super Admin' && test.testSeriesId?.price > 0) {
+        isLocked = !(await hasTestSeriesAccess(req.user, test.testSeriesId._id));
+      }
+      const availability = req.user?.role !== 'Super Admin' ? getTestAvailability(test) : { status: 'not_scheduled' };
+      enriched.push({ ...test.toObject(), isLocked, availability });
+    }
+
+    res.json({ success: true, data: enriched });
   } catch (error) {
     next(error);
   }

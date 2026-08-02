@@ -16,6 +16,12 @@ const testSeriesSchema = new mongoose.Schema({
     type: Number,
     default: 0, // 0 means Free
   },
+  banner: String,
+  featured: {
+    type: Boolean,
+    default: false,
+  },
+  publishAt: Date,
   tags: [String],
   active: {
     type: Boolean,

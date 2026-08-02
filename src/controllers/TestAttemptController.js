@@ -3,6 +3,8 @@ import Test from '../models/Test.js';
 import Question from '../models/Question.js';
 import { calculateAttemptAnalytics, getAdvancedAnalytics } from '../services/AnalyticsService.js';
 import { queueFailedQuestions } from '../services/RevisionService.js';
+import { hasTestSeriesAccess, getTestAvailability } from '../services/AccessService.js';
+import { awardTestSubmission } from '../services/GamificationService.js';
 
 export const startTest = async (req, res, next) => {
   try {
@@ -13,6 +15,33 @@ export const startTest = async (req, res, next) => {
     const test = await Test.findById(testId);
     if (!test) {
       return res.status(404).json({ success: false, message: 'Test not found' });
+    }
+
+    // Test gating: paid test series requires access (subscription or paid order)
+    const hasAccess = await hasTestSeriesAccess(req.user, test.testSeriesId);
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        code: 'TEST_LOCKED',
+        message: 'This test is part of a paid test series. Please subscribe or purchase to unlock.',
+      });
+    }
+
+    // Scheduled/live test window gating
+    const availability = getTestAvailability(test);
+    if (availability.status === 'scheduled') {
+      return res.status(403).json({
+        success: false,
+        code: 'TEST_SCHEDULED',
+        message: `This test opens on ${new Date(availability.opensAt).toLocaleString()}. Please return then.`,
+      });
+    }
+    if (availability.status === 'expired') {
+      return res.status(403).json({
+        success: false,
+        code: 'TEST_EXPIRED',
+        message: 'This scheduled test has closed. No more attempts are allowed.',
+      });
     }
 
     const previousAttemptsCount = await TestAttempt.countDocuments({
@@ -67,6 +96,7 @@ export const startTest = async (req, res, next) => {
     const attempt = await TestAttempt.create({
       studentId,
       testId,
+      testSeriesId: test.testSeriesId || null,
       status: 'In Progress',
       remainingSeconds: test.duration * 60,
       answers,
@@ -142,10 +172,17 @@ export const submitTest = async (req, res, next) => {
     // Queue failed questions in revision schedule
     await queueFailedQuestions(attempt.studentId, evaluatedAttempt.answers);
 
+    // Gamification: award XP / streak / badges (non-blocking)
+    let gamification = null;
+    try {
+      gamification = await awardTestSubmission({ userId: attempt.studentId, attemptId });
+    } catch (gErr) { console.warn('Gamification failed:', gErr.message); }
+
     res.json({
       success: true,
       message: 'Test submitted successfully.',
       data: evaluatedAttempt,
+      gamification,
     });
   } catch (error) {
     next(error);

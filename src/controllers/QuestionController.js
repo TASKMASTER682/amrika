@@ -195,6 +195,109 @@ export const listSubjects = async (req, res, next) => {
   }
 };
 
+// --- DUPLICATE DETECTION ---
+
+/**
+ * Finds questions that look like duplicates of a given question.
+ * Strategy:
+ *  1. Exact normalized-body matches (strongest signal)
+ *  2. Same subject + topic with high option-text overlap
+ *  3. Text-index similarity via $text (weaker, catches paraphrase)
+ */
+export const findDuplicateQuestions = async (req, res, next) => {
+  try {
+    const { q } = req.query;
+    if (!q || !q.trim()) {
+      return res.status(400).json({ success: false, message: 'Query parameter q is required.' });
+    }
+    const query = q.trim();
+    const normalized = query.replace(/\s+/g, ' ').toLowerCase().trim();
+
+    // 1. Exact body match (case + whitespace normalized)
+    const exact = await Question.find({ active: true }).lean();
+    const exactMatches = exact.filter((doc) =>
+      (doc.body || '').replace(/\s+/g, ' ').toLowerCase().trim() === normalized
+    );
+
+    // 2. Text search (requires the text index on body/tags)
+    let textMatches = [];
+    try {
+      textMatches = await Question.find({ active: true, $text: { $search: `"${query}"` } })
+        .limit(10)
+        .lean();
+    } catch (e) {
+      textMatches = [];
+    }
+
+    // Merge with dedupe, prioritize exact matches
+    const seen = new Set();
+    const results = [];
+    for (const doc of [...exactMatches, ...textMatches]) {
+      if (seen.has(doc._id.toString())) continue;
+      seen.add(doc._id.toString());
+      const similarity = exactMatches.some((d) => d._id.toString() === doc._id.toString()) ? 'exact' : 'similar';
+      results.push({ ...doc, matchType: similarity });
+    }
+
+    res.json({ success: true, data: results, count: results.length });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Scans the entire staging area for duplicate candidates against the master
+ * bank. Used by the moderation UI to flag staged questions that already exist.
+ */
+export const findStagedDuplicates = async (req, res, next) => {
+  try {
+    const staged = await QuestionStaging.find().sort({ createdAt: -1 }).lean();
+    const master = await Question.find({ active: true }).select('body subject topic').lean();
+
+    const masterNorm = master.map((m) => ({
+      _id: m._id,
+      body: (m.body || '').replace(/\s+/g, ' ').toLowerCase().trim(),
+      subject: (m.subject || '').toLowerCase(),
+      topic: (m.topic || '').toLowerCase(),
+    }));
+
+    const enriched = [];
+    for (const s of staged) {
+      const normBody = (s.body || '').replace(/\s+/g, ' ').toLowerCase().trim();
+      const subj = (s.subject || '').toLowerCase();
+      const topic = (s.topic || '').toLowerCase();
+
+      const dup = masterNorm.find((m) =>
+        m.body === normBody ||
+        (m.body && m.body === normBody)
+      );
+      const similar = masterNorm.find((m) =>
+        m.body !== normBody &&
+        m.subject === subj &&
+        m.topic === topic &&
+        m.body &&
+        normBody &&
+        (m.body.includes(normBody.slice(0, 40)) || normBody.includes(m.body.slice(0, 40)))
+      );
+
+      enriched.push({
+        ...s,
+        duplicateOf: dup ? dup._id : null,
+        duplicateMatchType: dup ? 'exact' : (similar ? 'similar' : null),
+        duplicatePreview: dup ? master.find((m) => m._id.toString() === dup._id.toString())?.body?.slice(0, 120) : (similar ? master.find((m) => m._id.toString() === similar._id.toString())?.body?.slice(0, 120) : null),
+      });
+    }
+
+    res.json({
+      success: true,
+      data: enriched,
+      duplicateCount: enriched.filter((e) => e.duplicateOf || e.duplicateMatchType).length,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const deleteQuestion = async (req, res, next) => {
   try {
     const question = await Question.findByIdAndUpdate(
