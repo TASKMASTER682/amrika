@@ -31,6 +31,7 @@ import studyMaterialRoutes from './routes/studyMaterialRoutes.js';
 import doubtRoutes from './routes/doubtRoutes.js';
 import studentAnalyticsRoutes from './routes/studentAnalyticsRoutes.js';
 import blogRoutes from './routes/blogRoutes.js';
+import { startKeepAlive } from './jobs/keepAlive.js';
 
 // Connect to Database
 connectDB();
@@ -117,11 +118,17 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'ExamOS server is healthy and running.' });
 });
 
+// Lightweight health endpoint (used by the keep-alive job / uptime monitors)
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', message: 'ExamOS server is healthy and running.', uptime: Math.floor(process.uptime()) });
+});
+
 // Centralized error handling (MUST be last)
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`ExamOS Enterprise Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  startKeepAlive();
 });
 
