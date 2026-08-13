@@ -23,6 +23,7 @@ const studyMaterialSchema = new mongoose.Schema({
     default: null,
   },
   active: { type: Boolean, default: true },
+  accessTier: { type: String, enum: ['free', 'member'], default: 'free' }, // 'member' = paid plan only
   downloadCount: { type: Number, default: 0 },
   fileSize: { type: String, default: '' },
   uploadedBy: {

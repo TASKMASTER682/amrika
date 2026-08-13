@@ -1,6 +1,6 @@
 import Test from '../models/Test.js';
 import Question from '../models/Question.js';
-import { hasTestSeriesAccess, getTestAvailability } from '../services/AccessService.js';
+import { canAttemptTest, getTestAvailability, isWithinFreeWindow } from '../services/AccessService.js';
 
 export const createTest = async (req, res, next) => {
   try {
@@ -18,7 +18,7 @@ export const listTests = async (req, res, next) => {
     if (examId) filter.examId = examId;
     if (testSeriesId) filter.testSeriesId = testSeriesId;
     if (status) filter.status = status;
-    else if (req.user?.role !== 'Super Admin') filter.status = 'Published'; // Users only see published tests
+    else if (req.user?.role !== 'Super Admin') filter.status = 'published'; // Users only see published tests
 
     const tests = await Test.find(filter)
       .populate('examId', 'name')
@@ -27,12 +27,10 @@ export const listTests = async (req, res, next) => {
 
     const enriched = [];
     for (const test of tests) {
-      let isLocked = false;
-      if (req.user?.role !== 'Super Admin' && test.testSeriesId?.price > 0) {
-        isLocked = !(await hasTestSeriesAccess(req.user, test.testSeriesId._id));
-      }
+      const isStaff = req.user?.role === 'Super Admin' || req.user?.role === 'Content Manager';
+      const isLocked = !isStaff && !(await canAttemptTest(req.user, test, test.testSeriesId));
       const availability = req.user?.role !== 'Super Admin' ? getTestAvailability(test) : { status: 'not_scheduled' };
-      enriched.push({ ...test.toObject(), isLocked, availability });
+      enriched.push({ ...test.toObject(), isLocked, memberOnly: !!test.includedInSubscription, isFree: isWithinFreeWindow(test), availability });
     }
 
     res.json({ success: true, data: enriched });
@@ -88,7 +86,7 @@ export const deleteTest = async (req, res, next) => {
 // Agency, Exam & TestSeries helpers to support dropdowns in the visual builder
 export const getHierarchyMeta = async (req, res, next) => {
   try {
-    const exams = await Test.find({ status: 'Published' }).distinct('examId');
+    const exams = await Test.find({ status: 'published' }).distinct('examId');
     res.json({ success: true, data: exams });
   } catch (error) {
     next(error);

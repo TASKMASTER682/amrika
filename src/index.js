@@ -2,10 +2,11 @@ import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
-import cors from 'cors';
-import helmet from 'helmet';
 import { connectDB } from './config/db.js';
+import { applySecurity } from './middleware/security.js';
+import { apiLimiter } from './middleware/rateLimiter.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { CLIENT_URLS, port } from './config/env.js';
 
 // Load routes
 import authRoutes from './routes/authRoutes.js';
@@ -34,7 +35,11 @@ import blogRoutes from './routes/blogRoutes.js';
 import { startKeepAlive } from './jobs/keepAlive.js';
 
 // Connect to Database
-connectDB();
+connectDB().then(() => {
+  import('./models/Test.js')
+    .then(({ normalizeTestStatus }) => normalizeTestStatus())
+    .catch((err) => console.error('[migration] Test status normalization failed:', err?.message || err));
+});
 
 // Model bootstrap: ensure all referenced models are registered before any populate()
 // (Fixes MissingSchemaError during populate of examId/testSeriesId/etc.)
@@ -55,23 +60,25 @@ import './models/Doubt.js';
 import './models/DoubtReply.js';
 import './models/Blog.js';
 
-
 const app = express();
 const server = http.createServer(app);
 
 // Initialize Socket.io
 const io = new Server(server, {
   cors: {
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT']
-  }
+    origin: CLIENT_URLS,
+    methods: ['GET', 'POST', 'PUT'],
+  },
 });
 
-// Middleware
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
+// Baseline security (helmet, strict CORS, mongo operator sanitizer)
+applySecurity(app);
+
+app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// General API rate limiter, plus a tighter one for auth credentials (mounted per-route in authRoutes)
+app.use('/api', apiLimiter);
 
 // Socket.io CBT heartbeat monitoring
 io.on('connection', (socket) => {
@@ -126,9 +133,7 @@ app.get('/api/health', (req, res) => {
 // Centralized error handling (MUST be last)
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`ExamOS Enterprise Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+server.listen(port, () => {
+  console.log(`ExamOS Enterprise Server running in ${process.env.NODE_ENV} mode on port ${port}`);
   startKeepAlive();
 });
-

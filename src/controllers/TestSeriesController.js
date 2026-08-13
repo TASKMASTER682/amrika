@@ -23,8 +23,12 @@ export const listTestSeries = async (req, res, next) => {
 
 export const getTestSeriesById = async (req, res, next) => {
   try {
+    const isStaff = req.user?.role === 'Super Admin' || req.user?.role === 'Content Manager';
     const series = await TestSeries.findById(req.params.id).populate('examId', 'name code');
     if (!series) {
+      return res.status(404).json({ success: false, message: 'Test Series not found.' });
+    }
+    if (!series.active && !isStaff) {
       return res.status(404).json({ success: false, message: 'Test Series not found.' });
     }
     res.json({ success: true, data: series });
@@ -69,18 +73,22 @@ export const updateTestSeries = async (req, res, next) => {
 export const searchTestSeries = async (req, res, next) => {
   try {
     const { q } = req.query;
-    if (!q || q.trim().length === 0) {
-      const all = await TestSeries.find({}).populate('examId', 'name code').sort({ title: 1 });
-      return res.json({ success: true, data: all });
-    }
-    const regex = new RegExp(q.trim(), 'i');
-    const series = await TestSeries.find({
+    const isStaff = req.user?.role === 'Super Admin' || req.user?.role === 'Content Manager';
+    // Students/public never see inactive series.
+    const base = isStaff && req.query.all === 'true' ? {} : { active: true };
+
+    const regex = new RegExp(String(q || '').trim(), 'i');
+    const fullQuery = q && q.trim().length > 0 ? {
       $or: [
         { title: regex },
         { description: regex },
         { tags: regex },
       ],
-    }).populate('examId', 'name code').sort({ title: 1 });
+    } : {};
+
+    const series = await TestSeries.find({ ...base, ...fullQuery })
+      .populate('examId', 'name code')
+      .sort({ title: 1 });
     res.json({ success: true, data: series });
   } catch (error) {
     next(error);

@@ -3,6 +3,7 @@ import Razorpay from 'razorpay';
 import Order from '../models/Order.js';
 import Plan from '../models/Plan.js';
 import TestSeries from '../models/TestSeries.js';
+import User from '../models/User.js';
 import Coupon from '../models/Coupon.js';
 import Referral from '../models/Referral.js';
 import Enrollment from '../models/Enrollment.js';
@@ -94,6 +95,7 @@ export const checkout = async (req, res, next) => {
     });
 
     const rzp = await getRazorpay();
+    const config = await getRazorpayConfig();
     let razorpayOrderId;
     let mode = 'offline';
     if (rzp) {
@@ -116,7 +118,7 @@ export const checkout = async (req, res, next) => {
         orderId: order._id,
         razorpayOrderId,
         mode,
-        keyId: KEY_ID || null,
+        keyId: config?.keyId ?? null,
         amount: payable,
         currency: 'INR',
         subtotal: amount,
@@ -168,7 +170,10 @@ export const verifyPayment = async (req, res, next) => {
     const user = req.user;
     if (order.type === 'plan' && order.plan) {
       const plan = await Plan.findById(order.plan);
-      const durationDays = plan?.durationDays ?? 30;
+      const durationMonths = plan?.durationMonths ?? 0;
+      const durationDays = durationMonths > 0
+        ? durationMonths * 30
+        : (plan?.durationDays ?? 30);
       const now = new Date();
       let expiresAt = null;
       if (durationDays > 0) {
@@ -196,7 +201,7 @@ export const verifyPayment = async (req, res, next) => {
           { new: true, upsert: true, setDefaultsOnInsert: true },
         );
         if (!ref.code) {
-          const code = `REF${user.referredBy.toString().slice(-4).toUpperCase()}${Math.floor(Math.random() * 90 + 10)}`;
+          const code = `REF${user.referredBy.toString().slice(-4).toUpperCase()}${crypto.randomInt(10, 100)}`;
           await Referral.updateOne({ _id: ref._id }, { $set: { code } });
         }
       }
@@ -263,25 +268,6 @@ export const refundOrder = async (req, res, next) => {
     });
 
     res.json({ success: true, message: 'Order refunded.' });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Student's own referral code + stats for display on the /plans page
-export const myReferral = async (req, res, next) => {
-  try {
-    const user = req.user;
-    const referral = await Referral.findOne({ user: user._id });
-    res.json({
-      success: true,
-      data: {
-        code: user.referralCode || referral?.code || null,
-        referralCount: referral?.referralCount || 0,
-        rewardAmount: referral?.rewardAmount || 0,
-        link: user.referralCode ? `${process.env.CLIENT_URL || 'http://localhost:3000'}/login?mode=signup&ref=${user.referralCode}` : null,
-      },
-    });
   } catch (error) {
     next(error);
   }

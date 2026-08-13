@@ -73,7 +73,7 @@ export const getTestSeriesLeaderboard = async (req, res, next) => {
     const series = await TestSeries.findById(testSeriesId).select('title');
     if (!series) return res.status(404).json({ success: false, message: 'Test series not found.' });
 
-    const tests = await Test.find({ testSeriesId, status: 'Published' }).select('_id title');
+    const tests = await Test.find({ testSeriesId, status: 'published' }).select('_id title');
     const testIds = tests.map(t => t._id);
 
     if (testIds.length === 0) {

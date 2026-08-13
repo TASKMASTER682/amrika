@@ -3,7 +3,7 @@ import Test from '../models/Test.js';
 import Question from '../models/Question.js';
 import { calculateAttemptAnalytics, getAdvancedAnalytics } from '../services/AnalyticsService.js';
 import { queueFailedQuestions } from '../services/RevisionService.js';
-import { hasTestSeriesAccess, getTestAvailability } from '../services/AccessService.js';
+import { canAttemptTest, getTestAvailability } from '../services/AccessService.js';
 import { awardTestSubmission } from '../services/GamificationService.js';
 
 export const startTest = async (req, res, next) => {
@@ -17,13 +17,13 @@ export const startTest = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Test not found' });
     }
 
-    // Test gating: paid test series requires access (subscription or paid order)
-    const hasAccess = await hasTestSeriesAccess(req.user, test.testSeriesId);
+    // Monetization gating (free window → free series → subscription/member → paid order)
+    const hasAccess = await canAttemptTest(req.user, test);
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
         code: 'TEST_LOCKED',
-        message: 'This test is part of a paid test series. Please subscribe or purchase to unlock.',
+        message: 'This test is locked. Subscribe or purchase it to unlock.',
       });
     }
 

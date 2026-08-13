@@ -1,51 +1,49 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { accessSecret } from '../config/env.js';
+import { hasActiveSubscription } from '../services/AccessService.js';
 
-export const protect = async (req, res, next) => {
-  let token;
+const getToken = (req) => {
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
+    return req.headers.authorization.split(' ')[1];
   }
-  if (!token && req.query.token) {
-    token = req.query.token;
-  }
+  return null;
+};
 
-  if (!token) {
+// Base middleware: verifies the JWT and loads the user into req.user.
+const authenticate = async (req, res, next) => {
+  const token = getToken(req);
+  if (!token) return null;
+
+  try {
+    const decoded = jwt.verify(token, accessSecret);
+    const user = await User.findById(decoded.id).select('-password');
+    if (!user || !user.active) return null;
+    req.user = user;
+    return user;
+  } catch {
+    return null;
+  }
+};
+
+/** Strict auth: rejects the request when no valid token is present. */
+export const protect = async (req, res, next) => {
+  const user = await authenticate(req, res, next);
+  if (!user) {
     return res.status(401).json({
       success: false,
       code: 'UNAUTHORIZED',
-      message: 'Access denied. No authentication token provided.',
+      message: 'Access denied. No valid authentication token provided.',
     });
   }
+  next();
+};
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_examos_jwt_key_2026');
-    const user = await User.findById(decoded.id).select('-password');
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        code: 'USER_NOT_FOUND',
-        message: 'The user belonging to this token no longer exists.',
-      });
-    }
-
-    if (!user.active) {
-      return res.status(403).json({
-        success: false,
-        code: 'USER_INACTIVE',
-        message: 'This user account is suspended.',
-      });
-    }
-
-    req.user = user;
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      success: false,
-      code: 'INVALID_TOKEN',
-      message: 'Invalid or expired authentication token.',
-    });
-  }
+/** Optional auth: attaches req.user when a valid token is present, but never rejects. */
+export const optionalProtect = async (req, res, next) => {
+  const user = await authenticate(req, res, next);
+  if (!user) return next(); // anonymous request (or invalid token) — proceed without a user
+  next();
 };
 
 export const authorize = (...roles) => {
@@ -59,4 +57,14 @@ export const authorize = (...roles) => {
     }
     next();
   };
+};
+
+/** Premium gate: only users with an active paid subscription may proceed. */
+export const requireSubscription = (req, res, next) => {
+  if (hasActiveSubscription(req.user)) return next();
+  return res.status(403).json({
+    success: false,
+    code: 'SUBSCRIPTION_REQUIRED',
+    message: 'This feature is available to members only. Please upgrade your plan to unlock it.',
+  });
 };

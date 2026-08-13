@@ -1,5 +1,6 @@
 import StudyMaterial from '../models/StudyMaterial.js';
 import { logAudit } from '../services/AuditService.js';
+import { hasActiveSubscription } from '../services/AccessService.js';
 
 const sanitizeTags = (tags) => {
   if (!tags) return [];
@@ -9,7 +10,7 @@ const sanitizeTags = (tags) => {
 
 export const createMaterial = async (req, res, next) => {
   try {
-    const { title, description, type, externalUrl, tags, subject, topic, examId, agencyId, fileSize, active } = req.body;
+    const { title, description, type, externalUrl, tags, subject, topic, examId, agencyId, fileSize, active, accessTier } = req.body;
     if (!title || !type || !externalUrl) {
       return res.status(400).json({ success: false, message: 'Title, type and external URL are required.' });
     }
@@ -25,6 +26,7 @@ export const createMaterial = async (req, res, next) => {
       agencyId: agencyId || null,
       fileSize: fileSize || '',
       active: active !== false,
+      accessTier: accessTier === 'member' ? 'member' : 'free',
       uploadedBy: req.user._id,
     });
 
@@ -136,6 +138,16 @@ export const downloadMaterial = async (req, res, next) => {
   }
   if (!material) return res.status(404).json({ success: false, message: 'Study material not found.' });
   if (!material.active) return res.status(403).json({ success: false, message: 'This material is unavailable.' });
+
+  // Member-tier materials require an active paid subscription (staff free).
+  const isStaff = ['Super Admin', 'Content Manager', 'Support'].includes(req.user?.role);
+  if (material.accessTier === 'member' && !isStaff && !hasActiveSubscription(req.user)) {
+    return res.status(403).json({
+      success: false,
+      code: 'SUBSCRIPTION_REQUIRED',
+      message: 'This material is for members only. Please upgrade your plan to download it.',
+    });
+  }
 
   material.downloadCount += 1;
   await material.save().catch(() => {});

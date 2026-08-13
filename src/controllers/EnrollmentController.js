@@ -10,6 +10,9 @@ export const enroll = async (req, res, next) => {
     if (!testSeries) {
       return res.status(404).json({ success: false, message: 'Test Series not found.' });
     }
+    if (!testSeries.active) {
+      return res.status(409).json({ success: false, message: 'This test series is no longer available for enrollment.' });
+    }
     
     // Check if paid test series - require payment or subscription
     if (testSeries.price > 0) {

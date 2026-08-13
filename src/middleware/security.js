@@ -1,26 +1,47 @@
-const helmet = require('helmet');
-const cors = require('cors');
-const mongoSanitize = require('express-mongo-sanitize');
-const xss = require('xss-clean');
-const config = require('../config/env');
+import helmet from 'helmet';
+import cors from 'cors';
+import { CLIENT_URLS } from '../config/env.js';
+
+// Recursively removes keys starting with '$' or containing '.' to block
+// MongoDB query/projection operator injection ($where, __proto__, etc.).
+const clean = (value, key) => {
+  if (key && (key.startsWith('$') || key.includes('.'))) return undefined;
+  if (Array.isArray(value)) return value.map((v) => clean(v));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const k of Object.keys(value)) {
+      const cleaned = clean(value[k], k);
+      if (cleaned !== undefined) out[k] = cleaned;
+    }
+    return out;
+  }
+  return value;
+};
+
+export const sanitizeMongo = (req, res, next) => {
+  ['body', 'query', 'params'].forEach((source) => {
+    if (req[source]) req[source] = clean(req[source]);
+  });
+  next();
+};
 
 /**
- * Applies the baseline security middleware every request goes through.
- * Order matters: helmet sets headers first, then CORS, then the two
- * sanitizers before the request body/query ever reaches a route handler.
+ * Baseline security middleware for every request.
+ * Order matters: helmet headers first, CORS, then operator-injection sanitizer.
  */
-function applySecurity(app) {
+export const applySecurity = (app) => {
   app.use(helmet());
-
   app.use(
     cors({
-      origin: config.clientUrl,
+      origin(origin, callback) {
+        // No Origin header (curl, server-to-server, same-origin) → allow.
+        if (!origin) return callback(null, true);
+        if (CLIENT_URLS.includes(origin)) return callback(null, true);
+        // `false` tells cors to respond 403 without leaking error internals.
+        return callback(null, false);
+      },
       credentials: true, // required for the httpOnly refresh-token cookie
     })
   );
-
-  app.use(mongoSanitize()); // strips keys starting with '$' or containing '.' to prevent operator injection
-  app.use(xss()); // escapes user input that could be reflected as HTML/script
-}
-
-module.exports = applySecurity;
+  app.use(sanitizeMongo);
+};

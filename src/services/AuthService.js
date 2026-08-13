@@ -1,21 +1,35 @@
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Referral from '../models/Referral.js';
+import { accessSecret, refreshSecret, accessExpiresIn, refreshExpiresIn } from '../config/env.js';
 
 const generateToken = (id, role, name) => {
   return jwt.sign(
     { id, role, name },
-    process.env.JWT_SECRET || 'super_secret_examos_jwt_key_2026',
-    { expiresIn: '1d' }
+    accessSecret,
+    { expiresIn: accessExpiresIn }
   );
 };
 
 const generateRefreshToken = (id) => {
   return jwt.sign(
     { id },
-    process.env.JWT_REFRESH_SECRET || 'super_secret_examos_refresh_key_2026',
-    { expiresIn: '7d' }
+    refreshSecret,
+    { expiresIn: refreshExpiresIn }
   );
+};
+
+const randomCode = (prefix, length) => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const buf = crypto.randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i += 1) out += chars[buf[i] % chars.length];
+  return `${prefix}${out}`;
+};
+
+const randomOtp = () => {
+  return String(crypto.randomInt(100000, 1000000));
 };
 
 // Staff roles can only be assigned by an existing admin through the admin routes.
@@ -46,18 +60,21 @@ export const register = async (name, email, password, role, agencyId, examId, re
     primaryExam: examId || undefined,
     agencies: Array.isArray(agencies) ? agencies : [],
     exams: [],
-    referralCode: `REF${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+    referralCode: randomCode('REF', 6),
     referredBy: referredBy || undefined,
     signupSource: signupSource || 'web',
   });
 
   if (referredBy) {
-    const code = `REF${referredBy.toString().slice(-4).toUpperCase()}${Math.floor(Math.random() * 90 + 10)}`;
+    const code = randomCode(`REF${referredBy.toString().slice(-4).toUpperCase()}`, 2);
+    // Two-step so the first referral still increments the count (MongoDB ignores
+    // $inc on an upsert insert when combined with $setOnInsert).
     await Referral.findOneAndUpdate(
       { user: referredBy },
-      { $inc: { referralCount: 0 }, $setOnInsert: { code } },
+      { $setOnInsert: { user: referredBy, code } },
       { upsert: true, setDefaultsOnInsert: true },
     );
+    await Referral.updateOne({ user: referredBy }, { $inc: { referralCount: 1 } });
   }
 
   const token = generateToken(user._id, user.role, user.name);
@@ -160,7 +177,7 @@ export const sendOtp = async (phone) => {
     throw error;
   }
 
-  const otp = String(Math.floor(100000 + Math.random() * 900000));
+  const otp = randomOtp();
   const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
   // Upsert user by phone, or attach OTP to existing account.
@@ -172,7 +189,7 @@ export const sendOtp = async (phone) => {
       password: otp, // temporary hashed password; user can set one later
       role: 'User',
       phone,
-      referralCode: `REF${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+      referralCode: randomCode('REF', 6),
     });
   }
 
@@ -181,9 +198,13 @@ export const sendOtp = async (phone) => {
   user.otpAttempts = 0;
   await user.save();
 
-  // Dev/demo mode: OTP returned to caller (frontend shows it). In production,
-  // an SMS gateway (e.g. MSG91/Twilio) would send this instead.
-  return { phone, otp, expiresInSec: 600, devOtp: otp };
+  // Dev/demo mode: OTP returned to caller so the frontend can show it.
+  // In production an SMS gateway (e.g. MSG91/Twilio) must send this instead —
+  // never expose the OTP in the API response there.
+  const isProduction = process.env.NODE_ENV === 'production';
+  return isProduction
+    ? { phone, expiresInSec: 600 }
+    : { phone, otp, expiresInSec: 600, devOtp: otp };
 };
 
 // Verify OTP and log the user in (creating the account on first verification).

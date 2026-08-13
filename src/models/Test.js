@@ -43,13 +43,35 @@ const testSchema = new mongoose.Schema({
   shuffleOptions: { type: Boolean, default: true },
   sections: [testSectionSchema],
   active: { type: Boolean, default: true },
+  // Monetization flags
+  includedInSubscription: { type: Boolean, default: false }, // unlocked by an active paid plan
+  freeWindow: { // public free-access window (e.g. Sunday free mock, trial promos)
+    from: { type: Date, default: null },
+    to: { type: Date, default: null },
+  },
   status: {
     type: String,
-    enum: ['Draft', 'Published'],
-    default: 'Draft',
+    enum: ['draft', 'published'],
+    default: 'draft',
+    set: (v) => String(v).toLowerCase(), // accept legacy 'Draft'/'Published' input
   },
 }, {
   timestamps: true,
 });
 
-export default mongoose.model('Test', testSchema);
+const Test = mongoose.model('Test', testSchema);
+
+// One-time migration: normalize any legacy 'Draft'/'Published' values to lowercase.
+export const normalizeTestStatus = async () => {
+  const conn = mongoose.connection;
+  if (conn.readyState !== 1) return;
+  const res = await Test.updateMany(
+    { status: { $in: ['Draft', 'Published'] } },
+    [{ $set: { status: { $toLower: '$status' } } }],
+  );
+  if (res.modifiedCount) {
+    console.log(`[migration] Normalized ${res.modifiedCount} test status values to lowercase.`);
+  }
+};
+
+export default Test;

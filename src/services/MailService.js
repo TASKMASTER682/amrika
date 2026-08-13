@@ -4,7 +4,7 @@
  * — the rest of the app must never crash because mail is unavailable.
  */
 
-const getTransporter = () => {
+const getTransporter = async () => {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
@@ -15,7 +15,7 @@ const getTransporter = () => {
   try {
     // Lazy import so the backend boots even if nodemailer is not installed
     // and SMTP is not configured.
-    nodemailer = require('nodemailer');
+    nodemailer = (await import('nodemailer')).default;
   } catch (e) {
     console.warn('[MailService] nodemailer not installed — email disabled.');
     return null;
@@ -30,7 +30,7 @@ const getTransporter = () => {
 };
 
 export const sendMail = async ({ to, subject, html, text }) => {
-  const transporter = getTransporter();
+  const transporter = await getTransporter();
   if (!transporter) {
     console.warn(`[MailService] SMTP not configured — skipped email to ${Array.isArray(to) ? to.length + ' recipients' : to}`);
     return { skipped: true };

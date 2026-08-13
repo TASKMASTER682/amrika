@@ -1,7 +1,6 @@
 import TestAttempt from '../models/TestAttempt.js';
 import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
-import Referral from '../models/Referral.js';
 import { logAudit } from '../services/AuditService.js';
 
 const logAction = async (req, action, details) => {
@@ -108,9 +107,13 @@ export const updateUser = async (req, res, next) => {
 
 export const resetPassword = async (req, res, next) => {
   try {
-    const { newPassword } = req.body;
+    const { newPassword, adminPassword } = req.body;
     if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+    }
+    // Secondary verification: the acting Super Admin must re-enter their own password.
+    if (!adminPassword || !(await req.user.comparePassword(adminPassword))) {
+      return res.status(403).json({ success: false, code: 'ADMIN_REAUTH_REQUIRED', message: 'Please re-enter your admin password to confirm this action.' });
     }
     const target = await User.findById(req.params.id);
     if (!target) return res.status(404).json({ success: false, message: 'User not found.' });
@@ -144,24 +147,6 @@ export const listAuditLogs = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .limit(200);
     res.json({ success: true, data: logs });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const myReferral = async (req, res, next) => {
-  try {
-    const user = req.user;
-    const referral = await Referral.findOne({ user: user._id });
-    res.json({
-      success: true,
-      data: {
-        code: user.referralCode || referral?.code || null,
-        referralCount: referral?.referralCount || 0,
-        rewardAmount: referral?.rewardAmount || 0,
-        link: user.referralCode ? `${process.env.CLIENT_URL || 'http://localhost:3000'}/register?ref=${user.referralCode}` : null,
-      },
-    });
   } catch (error) {
     next(error);
   }
