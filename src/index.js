@@ -6,7 +6,7 @@ import { connectDB } from './config/db.js';
 import { applySecurity } from './middleware/security.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { CLIENT_URLS, port } from './config/env.js';
+import { CLIENT_URLS, env, port } from './config/env.js';
 
 // Load routes
 import authRoutes from './routes/authRoutes.js';
@@ -62,6 +62,18 @@ import './models/Blog.js';
 
 const app = express();
 const server = http.createServer(app);
+
+// Trust the reverse-proxy hop in production so req.ip is the real client IP.
+// Without this, every user behind Nginx/Cloudflare shares the proxy IP and the
+// rate-limiter buckets collapse into a single bucket → global "too many attempts".
+// Override with TRUST_PROXY env: 'false' disables, a number = number of proxy hops,
+// a token like 'loopback' follows Express trust-proxy semantics.
+const trustProxy = process.env.TRUST_PROXY;
+if (trustProxy !== undefined) {
+  app.set('trust proxy', trustProxy === 'false' ? false : trustProxy === 'true' ? 1 : Number(trustProxy) || 1);
+} else {
+  app.set('trust proxy', env === 'production' ? 1 : false);
+}
 
 // Initialize Socket.io
 const io = new Server(server, {

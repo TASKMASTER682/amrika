@@ -1,5 +1,6 @@
 import * as AuthService from '../services/AuthService.js';
 import Referral from '../models/Referral.js';
+import { clearAuthBuckets } from '../middleware/rateLimiter.js';
 
 export const register = async (req, res, next) => {
   try {
@@ -24,6 +25,8 @@ export const register = async (req, res, next) => {
       sameSite: 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
+
+    clearAuthBuckets(req, email);
 
     res.status(201).json({
       success: true,
@@ -50,6 +53,8 @@ export const login = async (req, res, next) => {
     }
 
     const data = await AuthService.login(email, password);
+
+    clearAuthBuckets(req, email);
 
     res.cookie('refreshToken', data.refreshToken, {
       httpOnly: true,
@@ -116,6 +121,7 @@ export const otpRequest = async (req, res, next) => {
   try {
     const { phone } = req.body;
     const data = await AuthService.sendOtp(phone);
+    clearAuthBuckets(req, phone);
     res.json({ success: true, data });
   } catch (error) {
     next(error);
@@ -126,6 +132,8 @@ export const otpLogin = async (req, res, next) => {
   try {
     const { phone, otp } = req.body;
     const data = await AuthService.verifyOtpLogin(phone, otp);
+
+    clearAuthBuckets(req, phone);
 
     res.cookie('refreshToken', data.refreshToken, {
       httpOnly: true,
