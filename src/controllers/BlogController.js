@@ -206,14 +206,13 @@ export const getBlogById = async (req, res, next) => {
 export const getBlogBySlug = async (req, res, next) => {
   try {
     const isStaff = req.user?.role && ['Super Admin', 'Content Manager', 'Support'].includes(req.user.role);
-    const blog = await Blog.findOne({ slug: req.params.slug, status: 'published' })
+    const blog = await Blog.findOne({ slug: req.params.slug, ...(isStaff ? {} : { status: 'published' }) })
       .populate('author', 'name')
       .populate('materials', 'title type externalUrl subject topic fileSize');
 
     if (!blog) return res.status(404).json({ success: false, message: 'Blog not found.' });
 
-    // Count a view only for published blogs read by non-staff (mirrors getBlogById).
-    if (!isStaff) {
+    if (blog.status === 'published' && !isStaff) {
       blog.viewCount += 1;
       await blog.save().catch(() => {});
     }

@@ -256,3 +256,48 @@ export const verifyOtpLogin = async (phone, otp) => {
 
   return buildAuthResponse(user);
 };
+
+export const refresh = async (refreshToken) => {
+  if (!refreshToken) {
+    const error = new Error('Refresh token is missing.');
+    error.statusCode = 401;
+    error.code = 'NO_REFRESH_TOKEN';
+    throw error;
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, refreshSecret);
+    const user = await User.findById(decoded.id);
+
+    if (!user || !user.active) {
+      const error = new Error('Invalid or expired refresh token.');
+      error.statusCode = 401;
+      error.code = 'INVALID_REFRESH_TOKEN';
+      throw error;
+    }
+
+    const token = generateToken(user._id, user.role, user.name);
+    const newRefreshToken = generateRefreshToken(user._id);
+
+    return {
+      token,
+      refreshToken: newRefreshToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        agencies: user.agencies,
+        exams: user.exams,
+        referralCode: user.referralCode,
+        subscription: user.subscription,
+      },
+    };
+  } catch (err) {
+    const error = new Error('Invalid or expired refresh token.');
+    error.statusCode = 401;
+    error.code = 'INVALID_REFRESH_TOKEN';
+    throw error;
+  }
+};
+

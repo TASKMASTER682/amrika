@@ -1,6 +1,7 @@
 import TestAttempt from '../models/TestAttempt.js';
 import Test from '../models/Test.js';
 import TestSeries from '../models/TestSeries.js';
+import Enrollment from '../models/Enrollment.js';
 
 export const getTestLeaderboard = async (req, res, next) => {
   try {
@@ -17,7 +18,9 @@ export const getTestLeaderboard = async (req, res, next) => {
 
     const entries = attempts.map((a, i) => ({
       rank: i + 1,
+      studentId: a.studentId?._id,
       studentName: a.studentId?.name || 'Anonymous',
+      isMe: a.studentId?._id && String(a.studentId._id) === String(req.user._id),
       score: a.score,
       accuracy: a.accuracy,
       percentile: a.percentile,
@@ -117,7 +120,11 @@ export const getTestSeriesLeaderboard = async (req, res, next) => {
       },
     ]);
 
-    const entries = aggregated.map((e, i) => ({ rank: i + 1, ...e }));
+    const entries = aggregated.map((e, i) => ({
+      rank: i + 1,
+      isMe: String(e.studentId) === String(req.user._id),
+      ...e,
+    }));
 
     // Current user's position in the series
     let myEntry = null;
@@ -159,6 +166,67 @@ export const getTestSeriesLeaderboard = async (req, res, next) => {
       success: true,
       data: { series, tests, entries, myEntry },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Leaderboard landing data: every test series the current user is enrolled in,
+ * plus their standing (best rank / best score / attempts) inside each series.
+ */
+export const getMySeriesLeaderboards = async (req, res, next) => {
+  try {
+    const enrollments = await Enrollment.find({ userId: req.user._id })
+      .populate({ path: 'testSeriesId', populate: { path: 'examId', select: 'name' } })
+      .sort({ enrolledAt: -1 });
+
+    const data = await Promise.all(
+      enrollments.map(async (enrollment) => {
+        const series = enrollment.testSeriesId;
+        if (!series) return null;
+
+        const tests = await Test.find({ testSeriesId: series._id, status: 'published' }).select('_id');
+        const testIds = tests.map((t) => t._id);
+
+        let myBestScore = null;
+        let myRank = null;
+        let testsAttempted = 0;
+        let totalParticipants = 0;
+
+        if (testIds.length > 0) {
+          const aggregated = await TestAttempt.aggregate([
+            { $match: { testId: { $in: testIds }, status: 'Submitted' } },
+            { $sort: { score: -1, submittedAt: 1 } },
+            { $group: { _id: '$studentId', bestScore: { $first: '$score' }, attempts: { $sum: 1 } } },
+          ]);
+          const ranked = [...aggregated].sort((a, b) => b.bestScore - a.bestScore);
+          totalParticipants = ranked.length;
+          for (let i = 0; i < ranked.length; i += 1) {
+            if (String(ranked[i]._id) === String(req.user._id)) {
+              myBestScore = Number(ranked[i].bestScore);
+              myRank = i + 1;
+              testsAttempted = ranked[i].attempts;
+              break;
+            }
+          }
+        }
+
+        return {
+          testSeriesId: series._id,
+          title: series.title,
+          examName: series.examId?.name || 'General',
+          testsCount: testIds.length,
+          testsAttempted,
+          totalParticipants,
+          myBestScore,
+          myRank,
+          hasAttempted: myRank != null,
+        };
+      })
+    );
+
+    res.json({ success: true, data: data.filter(Boolean) });
   } catch (error) {
     next(error);
   }

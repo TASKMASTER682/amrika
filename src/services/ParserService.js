@@ -3,6 +3,7 @@ import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
 import XLSX from 'xlsx';
 import QuestionStaging from '../models/QuestionStaging.js';
+import { normalizeQuestionType } from '../models/Question.js';
 
 /**
  * Parses a CSV buffer into staging records
@@ -56,7 +57,7 @@ export const parseCSV = async (buffer, userId, filename, opts = {}) => {
       body: body.trim(),
       options,
       correctAnswer,
-      type,
+      type: normalizeQuestionType(type),
       subject: subject.trim(),
       topic: topic.trim(),
       subtopic: subtopic.trim(),
@@ -130,7 +131,7 @@ export const parseXLSX = async (buffer, userId, filename, opts = {}) => {
       body: body.trim(),
       options,
       correctAnswer,
-      type,
+      type: normalizeQuestionType(type),
       subject: subject.trim(),
       topic: topic.trim(),
       subtopic: subtopic.trim(),
@@ -383,7 +384,7 @@ export const parseStructuredText = (rawText, userId, filename = 'paste') => {
       context: lastContext || '',
       options,
       correctAnswer,
-      type,
+      type: normalizeQuestionType(type),
       subject: subj || 'General',
       topic,
       subtopic: '',

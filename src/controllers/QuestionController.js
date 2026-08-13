@@ -1,4 +1,4 @@
-import Question from '../models/Question.js';
+import Question, { normalizeQuestionType } from '../models/Question.js';
 import QuestionStaging from '../models/QuestionStaging.js';
 import Test from '../models/Test.js';
 import * as ParserService from '../services/ParserService.js';
@@ -119,33 +119,6 @@ export const pasteQuestions = async (req, res, next) => {
       parsed = await ParserService.parseRawText(text, req.user._id, 'paste');
     }
 
-    const normalizeType = (t) => {
-      if (!t) return 'Single Correct';
-      const map = {
-        'assertion-reason': 'Assertion Reason',
-        'assertion reason': 'Assertion Reason',
-        'match-the-column': 'Match the Following',
-        'match the column': 'Match the Following',
-        'true-false': 'True False',
-        'true false': 'True False',
-        'data-interpretation': 'Data Interpretation',
-        'data interpretation': 'Data Interpretation',
-        'data-sufficiency': 'Data Sufficiency',
-        'data sufficiency': 'Data Sufficiency',
-        'case-study': 'Case Study',
-        'case study': 'Case Study',
-        'paragraph-based': 'Paragraph Based',
-        'paragraph based': 'Paragraph Based',
-        'image-based': 'Image Based',
-        'image based': 'Image Based',
-        'single-correct': 'Single Correct',
-        'single correct': 'Single Correct',
-        'multiple-correct': 'Multiple Correct',
-        'multiple correct': 'Multiple Correct',
-      };
-      return map[t.toLowerCase()] || t;
-    };
-
     // Filter out blocks with no question body (e.g. trailing text after last [NEXT])
     const validQuestions = parsed.filter((item) => item.body?.trim());
     if (validQuestions.length === 0) {
@@ -156,7 +129,7 @@ export const pasteQuestions = async (req, res, next) => {
       body: item.body,
       options: item.options,
       correctAnswer: item.correctAnswer,
-      type: normalizeType(item.type),
+      type: normalizeQuestionType(item.type),
       subject: item.subject || 'General',
       topic: item.topic || 'General',
       subtopic: item.subtopic || '',

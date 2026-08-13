@@ -30,7 +30,7 @@ export const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
 export const rateLimit = {
   windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: Number(process.env.RATE_LIMIT_MAX) || 300,
+  max: Number(process.env.RATE_LIMIT_MAX) || 1000,
 };
 
 // Auth-limiter limits. Buckets are keyed per (client IP + attempted email/phone),
@@ -38,7 +38,7 @@ export const rateLimit = {
 // site (fixes the reverse-proxy collapse where every user shares the proxy IP).
 export const authRateLimit = {
   windowMs: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  maxPerIdentifier: Number(process.env.AUTH_RATE_LIMIT_MAX) || 20,
-  maxPerIp: Number(process.env.AUTH_RATE_LIMIT_IP_MAX) || 100,
+  maxPerIdentifier: Number(process.env.AUTH_RATE_LIMIT_MAX) || 30,
+  maxPerIp: Number(process.env.AUTH_RATE_LIMIT_IP_MAX) || 150,
   message: 'Too many auth attempts, please try again later',
 };

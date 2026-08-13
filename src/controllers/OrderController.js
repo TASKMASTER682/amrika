@@ -191,7 +191,7 @@ export const verifyPayment = async (req, res, next) => {
     }
 
     // Referral reward: credit referrer 10% of this user's first paid order.
-    if (user.referredBy && order.type === 'plan') {
+    if (user.referredBy) {
       const firstPaid = await Order.countDocuments({ user: user._id, status: 'paid' });
       if (firstPaid <= 1) {
         const reward = Math.round(order.amount * 0.1);

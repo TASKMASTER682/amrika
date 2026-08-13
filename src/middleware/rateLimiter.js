@@ -21,7 +21,15 @@ const hit = (key, windowMs, max, res, message) => {
   return true;
 };
 
-const clientIp = (req) => req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
+const clientIp = (req) => {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (forwardedFor) {
+    const ips = forwardedFor.split(',').map((ip) => ip.trim());
+    if (ips[0]) return ips[0];
+  }
+  return req.headers['x-real-ip'] || req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
+};
+
 
 const limiter = ({ windowMs, max, message }) => (req, res, next) => {
   if (!hit(clientIp(req), windowMs, max, res, message)) return;

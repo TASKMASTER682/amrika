@@ -6,6 +6,7 @@ const router = express.Router();
 
 router.use(protect);
 
+router.get('/my-series', LeaderboardController.getMySeriesLeaderboards);
 router.get('/test/:testId', LeaderboardController.getTestLeaderboard);
 router.get('/series/:testSeriesId', LeaderboardController.getTestSeriesLeaderboard);
 

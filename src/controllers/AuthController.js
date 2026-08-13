@@ -4,7 +4,7 @@ import { clearAuthBuckets } from '../middleware/rateLimiter.js';
 
 export const register = async (req, res, next) => {
   try {
-    const { name, email, password, role, agencyId, examId, referralCode, signupSource, agencies } = req.body;
+    const { name, email, password, agencyId, examId, referralCode, signupSource, agencies } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -14,9 +14,7 @@ export const register = async (req, res, next) => {
       });
     }
 
-    // Self-registration can never assign privileged roles; normalize any stray role value.
-    const normalizedRole = role === 'Super Admin' ? 'Super Admin' : 'User';
-    const data = await AuthService.register(name, email, password, normalizedRole, agencyId, examId, referralCode, signupSource, agencies);
+    const data = await AuthService.register(name, email, password, 'User', agencyId, examId, referralCode, signupSource, agencies);
 
     // Send HTTP-only cookie for refresh token
     res.cookie('refreshToken', data.refreshToken, {
@@ -168,3 +166,37 @@ export const myReferral = async (req, res, next) => {
     next(error);
   }
 };
+
+export const refresh = async (req, res, next) => {
+  try {
+    const cookieHeader = req.headers.cookie || '';
+    const cookies = {};
+    cookieHeader.split(';').forEach((cookie) => {
+      const parts = cookie.split('=');
+      const name = parts[0].trim();
+      const value = parts.slice(1).join('=').trim();
+      if (name) cookies[name] = decodeURIComponent(value);
+    });
+    const refreshToken = cookies.refreshToken;
+
+    const data = await AuthService.refresh(refreshToken);
+
+    res.cookie('refreshToken', data.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        token: data.token,
+        user: data.user,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
