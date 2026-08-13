@@ -102,6 +102,8 @@ export const startTest = async (req, res, next) => {
       answers,
     });
 
+    await attempt.populate('answers.questionId');
+
     res.status(201).json({
       success: true,
       message: 'Test started successfully.',
