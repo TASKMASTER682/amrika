@@ -43,6 +43,22 @@ export const apiLimiter = limiter({
   message: 'Too many requests, please try again later',
 });
 
+/** Tighter limiter for the error-reporting endpoint — stops a crash-looping
+ *  client or a script from flooding the error logs. */
+export const errorLogLimiter = limiter({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: 'Too many error reports, please try again later',
+});
+
+/** Limiter for the analytics tracking endpoint — heartbeats + pageviews are
+ *  cheap, but a runaway tab (or bot) shouldn't hammer it. */
+export const analyticsTrackLimiter = limiter({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: 'Too many tracking requests, please try again later',
+});
+
 const resolveIdentifier = (req) => {
   const body = req.body || {};
   return String(body.email || body.phone || body.mobile || '').trim().toLowerCase() || 'anon';

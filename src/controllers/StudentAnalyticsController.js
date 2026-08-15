@@ -54,13 +54,25 @@ export const getDailyStats = async (req, res, next) => {
     const attempts = await TestAttempt.find({
       studentId: req.user._id,
       status: 'Submitted',
-    }).sort({ submittedAt: -1 });
+    }).populate('testId').sort({ submittedAt: -1 });
 
     const todayAttempts = attempts.filter(a => a.submittedAt && new Date(a.submittedAt) >= today);
     const questionsToday = todayAttempts.reduce((s, a) => s + (a.answers?.length || 0), 0);
     const timeSpentToday = todayAttempts.reduce((s, a) => s + (a.answers?.reduce((x, y) => x + (y.timeSpent || 0), 0) || 0), 0);
-    const scoreAvg = attempts.length > 0
-      ? Math.round(attempts.reduce((s, a) => s + a.score, 0) / attempts.length)
+
+    // Average score as a percentage of each test's maximum marks (tests vary in max marks).
+    const pctScores = attempts
+      .filter(a => a.testId && Array.isArray(a.testId.sections))
+      .map(a => {
+        const maxMarks = a.testId.sections.reduce(
+          (s, sec) => s + ((sec.questions?.length || 0) * (sec.marksPerQuestion || 1)),
+          0
+        );
+        return maxMarks > 0 ? (a.score / maxMarks) * 100 : null;
+      })
+      .filter(v => v !== null);
+    const scoreAvg = pctScores.length > 0
+      ? Math.round(pctScores.reduce((s, v) => s + v, 0) / pctScores.length)
       : 0;
 
     // Streak: consecutive distinct days with a submitted attempt.

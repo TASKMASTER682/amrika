@@ -1,3 +1,25 @@
+import ErrorLog from '../models/ErrorLog.js';
+
+// Fire-and-forget persistence of real server errors (5xx) into the error-log
+// collection so they show up in the admin dashboard. Never allowed to break the
+// response path — failures here are swallowed.
+const persistServerError = (err, req, statusCode, code, message) => {
+  if (statusCode < 500) return; // 4xx are client mistakes, not server bugs
+  ErrorLog.create({
+    source: 'server',
+    type: 'Server Error',
+    message: `[${code}] ${message}`,
+    stack: err?.stack || '',
+    url: req.originalUrl || req.url || '',
+    method: req.method || '',
+    statusCode,
+    route: (req.baseUrl || '') + (req.path || ''),
+    userId: req.user?._id || null,
+    userAgent: String(req.headers['user-agent'] || '').slice(0, 500),
+    ip: req.ip || req.socket?.remoteAddress || '',
+  }).catch(() => {});
+};
+
 export const errorHandler = (err, req, res, next) => {
   let statusCode = err.statusCode || 500;
   let code = err.code || 'INTERNAL_SERVER_ERROR';
@@ -41,6 +63,9 @@ export const errorHandler = (err, req, res, next) => {
   // Log full error details securely in dev/production logs
   console.error(`[Error] Code: ${code} | Status: ${statusCode} | Path: ${req.originalUrl}`);
   console.error(err.stack);
+
+  // Persist real server errors so admins can review them in the dashboard
+  persistServerError(err, req, statusCode, code, message);
 
   res.status(statusCode).json({
     success: false,

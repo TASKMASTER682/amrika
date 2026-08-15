@@ -8,6 +8,7 @@ const router = express.Router();
 router.use(protect);
 
 // Dynamic practice generator and recommendations
+router.get('/subjects', PracticeController.getPracticeSubjects);
 router.get('/generate', PracticeController.generatePracticeSet);
 router.get('/recommendations', PracticeController.getRecommendations);
 

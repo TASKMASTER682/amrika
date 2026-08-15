@@ -6,6 +6,20 @@ import { queueFailedQuestions } from '../services/RevisionService.js';
 import { canAttemptTest, getTestAvailability } from '../services/AccessService.js';
 import { awardTestSubmission } from '../services/GamificationService.js';
 
+// Server-side time enforcement (frontend timer is only visual).
+const MINUTES_TO_MS = 60 * 1000;
+const GRACE_MS = 60 * 1000; // buffer for network latency / auto-submit fired at time-0
+
+// Authoritative remaining seconds for a timed test, computed from the server clock.
+// Returns null for untimed tests (duration <= 0) — no enforcement.
+const getAuthoritativeRemaining = (attempt, test) => {
+  const durationSec = (test?.duration || 0) * 60;
+  if (durationSec <= 0) return null;
+  const started = attempt.startedAt ? new Date(attempt.startedAt).getTime() : Date.now();
+  const elapsedSec = Math.max(0, Math.floor((Date.now() - started) / 1000));
+  return Math.max(0, durationSec - elapsedSec);
+};
+
 export const startTest = async (req, res, next) => {
   try {
     const { testId } = req.body;
@@ -66,6 +80,9 @@ export const startTest = async (req, res, next) => {
     }).populate('answers.questionId');
 
     if (existingInProgress) {
+      // Never resume with more time than the server clock allows.
+      const authRemaining = getAuthoritativeRemaining(existingInProgress, test);
+      if (authRemaining !== null) existingInProgress.remainingSeconds = authRemaining;
       return res.json({
         success: true,
         message: 'Resuming active session.',
@@ -140,7 +157,15 @@ export const saveProgress = async (req, res, next) => {
       });
     }
 
-    attempt.remainingSeconds = remainingSeconds;
+    // Clamp the client-supplied remaining time against the server clock so a
+    // tampered payload can never extend the test beyond its real deadline.
+    const test = await Test.findById(attempt.testId).select('duration');
+    const authRemaining = getAuthoritativeRemaining(attempt, test);
+    if (authRemaining !== null) {
+      attempt.remainingSeconds = Math.min(Number(remainingSeconds) || 0, authRemaining);
+    } else {
+      attempt.remainingSeconds = remainingSeconds;
+    }
     attempt.activeSectionIndex = activeSectionIndex;
     attempt.lastHeartbeat = new Date();
 
@@ -166,6 +191,18 @@ export const submitTest = async (req, res, next) => {
 
     if (attempt.status !== 'In Progress') {
       return res.status(400).json({ success: false, message: 'This test attempt has already been submitted.' });
+    }
+
+    // Server-side deadline enforcement — the frontend timer is only visual.
+    const test = await Test.findById(attempt.testId).select('duration');
+    const startedAt = attempt.startedAt ? new Date(attempt.startedAt).getTime() : null;
+    const durationMs = (test?.duration || 0) * MINUTES_TO_MS;
+    if (startedAt && durationMs > 0 && Date.now() > startedAt + durationMs + GRACE_MS) {
+      return res.status(400).json({
+        success: false,
+        code: 'TEST_TIME_EXPIRED',
+        message: 'Your test time has expired. This attempt can no longer be submitted.',
+      });
     }
 
     // Call analytics service to score and finalize attempt

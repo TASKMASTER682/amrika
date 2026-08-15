@@ -32,6 +32,7 @@ import studyMaterialRoutes from './routes/studyMaterialRoutes.js';
 import doubtRoutes from './routes/doubtRoutes.js';
 import studentAnalyticsRoutes from './routes/studentAnalyticsRoutes.js';
 import blogRoutes from './routes/blogRoutes.js';
+import errorLogRoutes from './routes/errorLogRoutes.js';
 import { startKeepAlive } from './jobs/keepAlive.js';
 
 // Connect to Database
@@ -59,6 +60,8 @@ import './models/StudyMaterial.js';
 import './models/Doubt.js';
 import './models/DoubtReply.js';
 import './models/Blog.js';
+import './models/ErrorLog.js';
+import './models/AnalyticsEvent.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -90,7 +93,12 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // General API rate limiter, plus a tighter one for auth credentials (mounted per-route in authRoutes)
-app.use('/api', apiLimiter);
+// The analytics track endpoint is skipped here — it has its own tighter limiter and must never
+// consume the shared per-IP bucket (a busy shared network would otherwise 429 everyone).
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/analytics/track')) return next();
+  apiLimiter(req, res, next);
+});
 
 // Socket.io CBT heartbeat monitoring
 io.on('connection', (socket) => {
@@ -131,6 +139,7 @@ app.use('/api/materials', studyMaterialRoutes);
 app.use('/api/doubts', doubtRoutes);
 app.use('/api/my-analytics', studentAnalyticsRoutes);
 app.use('/api/blogs', blogRoutes);
+app.use('/api/errors', errorLogRoutes);
 
 // Test endpoint
 app.get('/health', (req, res) => {

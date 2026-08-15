@@ -40,6 +40,17 @@ export const enroll = async (req, res, next) => {
 export const unenroll = async (req, res, next) => {
   try {
     const { testSeriesId } = req.params;
+
+    // Paid test series cannot be unenrolled — access ends when the series expires.
+    const series = await TestSeries.findById(testSeriesId);
+    if (series && series.price > 0) {
+      return res.status(403).json({
+        success: false,
+        code: 'PAID_SERIES_UNENROLL_FORBIDDEN',
+        message: 'Paid test series cannot be unenrolled. Your access remains until it expires.',
+      });
+    }
+
     const enrollment = await Enrollment.findOneAndDelete({ userId: req.user._id, testSeriesId });
     if (!enrollment) {
       return res.status(404).json({ success: false, message: 'Enrollment not found.' });
