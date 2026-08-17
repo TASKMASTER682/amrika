@@ -42,3 +42,22 @@ export const authRateLimit = {
   maxPerIp: Number(process.env.AUTH_RATE_LIMIT_IP_MAX) || 150,
   message: 'Too many auth attempts, please try again later',
 };
+
+// Google OAuth
+export const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
+export const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+export const googleCallbackUrl = process.env.GOOGLE_CALLBACK_URL || '';
+
+// Allowed email domains for registration
+export const allowedEmailDomains = (process.env.ALLOWED_EMAIL_DOMAINS || '')
+  .split(',')
+  .map((d) => d.trim().toLowerCase())
+  .filter(Boolean);
+
+export const isValidEmailDomain = (email) => {
+  const domain = String(email || '').split('@')[1]?.toLowerCase();
+  return domain ? allowedEmailDomains.includes(domain) : false;
+};
+
+// Email verification
+export const emailVerificationExpiresMs = Number(process.env.EMAIL_VERIFICATION_EXPIRES_MS) || 24 * 60 * 60 * 1000;

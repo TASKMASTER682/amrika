@@ -14,26 +14,47 @@ import { logAudit } from '../services/AuditService.js';
 let cachedConfig = null;
 
 const getRazorpayConfig = async () => {
-  if (cachedConfig) return cachedConfig;
-  const config = await RazorpayConfig.findOne({});
-  if (config) {
-    cachedConfig = { keyId: config.keyId, keySecret: config.keySecret };
+  if (cachedConfig?.keyId && cachedConfig?.keySecret) {
     return cachedConfig;
   }
-  // Fallback to env
+
+  const config = await RazorpayConfig.findOne({});
+
+  if (config?.keyId && config?.keySecret) {
+    cachedConfig = { keyId: config.keyId, keySecret: config.keySecret };
+    console.log("Razorpay config loaded from DB");
+    return cachedConfig;
+  }
+
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
   if (keyId && keySecret) {
     cachedConfig = { keyId, keySecret };
+    console.log("Razorpay config loaded from ENV");
     return cachedConfig;
   }
+
+  console.error("Razorpay configuration missing");
   return null;
 };
 
 const getRazorpay = async () => {
   const config = await getRazorpayConfig();
-  if (!config) return null;
-  return new Razorpay({ key_id: config.keyId, key_secret: config.keySecret });
+
+  if (!config) {
+    return null;
+  }
+
+  console.log("Razorpay initialized:", {
+    keyId: config.keyId,
+    hasSecret: !!config.keySecret,
+  });
+
+  return new Razorpay({
+    key_id: config.keyId,
+    key_secret: config.keySecret,
+  });
 };
 
 export const clearRazorpayCache = () => {
@@ -112,6 +133,10 @@ export const checkout = async (req, res, next) => {
       mode = 'razorpay';
     }
 
+    const merchantVpa = process.env.RAZORPAY_MERCHANT_VPA || 'success@razorpay';
+    const merchantName = process.env.RAZORPAY_MERCHANT_NAME || 'ExamOS';
+    const upiString = `upi://pay?pa=${encodeURIComponent(merchantVpa)}&pn=${encodeURIComponent(merchantName)}&am=${payable}&cu=INR&tn=${encodeURIComponent(entity.name || entity.title)}&tr=${encodeURIComponent(razorpayOrderId || String(order._id))}`;
+
     res.status(201).json({
       success: true,
       data: {
@@ -124,6 +149,8 @@ export const checkout = async (req, res, next) => {
         subtotal: amount,
         discount,
         item: { name: entity.name || entity.title, price: amount },
+        upiString,
+        merchantVpa,
       },
     });
   } catch (error) {
@@ -278,6 +305,40 @@ export const listActivePlans = async (req, res, next) => {
   try {
     const plans = await Plan.find({ active: true }).sort({ price: 1 });
     res.json({ success: true, data: plans });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getOrderStatus = async (req, res, next) => {
+  try {
+    const order = await Order.findOne({ _id: req.params.id, user: req.user._id });
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+
+    if (order.status === 'paid') {
+      return res.json({ success: true, data: { status: 'paid', orderId: order._id } });
+    }
+
+    if (order.razorpayOrderId && order.paymentProvider === 'razorpay') {
+      const rzp = await getRazorpay();
+      if (rzp) {
+        try {
+          const rzpOrder = await rzp.orders.fetch(order.razorpayOrderId);
+          if (rzpOrder.status === 'paid' || rzpOrder.amount_paid > 0) {
+            order.status = 'paid';
+            if (rzpOrder.payments && rzpOrder.payments.length > 0) {
+              order.paymentId = rzpOrder.payments[0];
+            }
+            await order.save();
+            return res.json({ success: true, data: { status: 'paid', orderId: order._id } });
+          }
+        } catch (e) {
+          // Razorpay API error — still return current DB status
+        }
+      }
+    }
+
+    res.json({ success: true, data: { status: order.status, orderId: order._id } });
   } catch (error) {
     next(error);
   }

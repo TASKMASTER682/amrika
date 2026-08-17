@@ -4,20 +4,12 @@ import { clearRazorpayCache } from './OrderController.js';
 export const getRazorpayConfig = async (req, res, next) => {
   try {
     const config = await RazorpayConfig.findOne({});
-    if (!config) {
-      return res.json({
-        success: true,
-        data: {
-          keyId: process.env.RAZORPAY_KEY_ID || null,
-          keySecret: process.env.RAZORPAY_KEY_SECRET || null,
-        },
-      });
-    }
+    const keyId = config?.keyId || process.env.RAZORPAY_KEY_ID || null;
     res.json({
       success: true,
       data: {
-        keyId: config.keyId,
-        keySecret: config.keySecret,
+        keyId,
+        configured: !!keyId,
       },
     });
   } catch (error) {

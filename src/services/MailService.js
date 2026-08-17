@@ -74,3 +74,34 @@ export const sendAnnouncementBlast = async ({ title, message, audience, limit = 
   return sendMail({ to: emails, subject, html });
 };
 
+/**
+ * Send an email verification link to a newly registered user.
+ * The token links back to the frontend so the user can click through.
+ */
+export const sendVerificationEmail = async (email, name, token, clientUrl) => {
+  const verifyUrl = `${clientUrl || process.env.CLIENT_URL || 'http://localhost:3000'}/verify-email?token=${token}`;
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px">
+      <h2 style="margin:0 0 8px;color:#111827">Verify your ExamOS email address</h2>
+      <p style="color:#4b5563;line-height:1.6">Hi ${name || 'there'},</p>
+      <p style="color:#4b5563;line-height:1.6">Thanks for signing up on ExamOS. Please click the button below to verify your email address and activate your account.</p>
+      <div style="margin:24px 0;text-align:center">
+        <a href="${verifyUrl}" style="display:inline-block;padding:12px 28px;border-radius:8px;background:#2563eb;color:#fff;text-decoration:none;font-weight:bold">Verify Email Address</a>
+      </div>
+      <p style="color:#4b5563;line-height:1.6">Or copy and paste this link: <a href="${verifyUrl}" style="color:#2563eb">${verifyUrl}</a></p>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0" />
+      <p style="color:#9ca3af;font-size:12px">This link expires in 24 hours. If you didn't sign up for ExamOS, you can safely ignore this email.</p>
+    </div>
+  `;
+
+  const text = `Verify your ExamOS email address\n\nHi ${name || 'there'},\n\nPlease verify your email address by visiting:\n${verifyUrl}\n\nThis link expires in 24 hours.`;
+
+  return sendMail({
+    to: email,
+    subject: 'Verify your ExamOS email address',
+    html,
+    text,
+  });
+};
+

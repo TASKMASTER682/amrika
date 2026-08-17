@@ -4,7 +4,15 @@ import { canAttemptTest, getTestAvailability, isWithinFreeWindow } from '../serv
 
 export const createTest = async (req, res, next) => {
   try {
-    const test = await Test.create(req.body);
+    const { title, examId, testSeriesId, sections, duration, passingMarks, negativeMarking } = req.body;
+    const test = await Test.create({
+      title: title || '',
+      examId: examId || null,
+      testSeriesId: testSeriesId || null,
+      duration: duration || 0,
+      passingMarks: passingMarks !== undefined ? passingMarks : 0,
+      negativeMarking: negativeMarking !== undefined ? negativeMarking : 0,
+    });
     res.status(201).json({ success: true, data: test });
   } catch (error) {
     next(error);
@@ -61,7 +69,19 @@ export const getTestById = async (req, res, next) => {
 
 export const updateTest = async (req, res, next) => {
   try {
-    const test = await Test.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const { title, examId, testSeriesId, sections, duration, passingMarks, negativeMarking } = req.body;
+    const test = await Test.findByIdAndUpdate(
+      req.params.id,
+      {
+        title: title !== undefined ? title : undefined,
+        examId: examId !== undefined ? examId : undefined,
+        testSeriesId: testSeriesId !== undefined ? testSeriesId : undefined,
+        duration: duration !== undefined ? duration : undefined,
+        passingMarks: passingMarks !== undefined ? passingMarks : undefined,
+        negativeMarking: negativeMarking !== undefined ? negativeMarking : undefined,
+      },
+      { new: true, runValidators: true }
+    );
     if (!test) {
       return res.status(404).json({ success: false, message: 'Test not found' });
     }

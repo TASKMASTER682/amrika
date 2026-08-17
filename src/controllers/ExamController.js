@@ -26,7 +26,15 @@ export const getExamById = async (req, res, next) => {
 
 export const createExam = async (req, res, next) => {
   try {
-    const exam = await Exam.create(req.body);
+    const { title, code, duration, passingMarks, agencyId, negativeMarking } = req.body;
+    const exam = await Exam.create({
+      title: title || '',
+      code: code || '',
+      duration: duration || 0,
+      passingMarks: passingMarks !== undefined ? passingMarks : 0,
+      negativeMarking: negativeMarking !== undefined ? negativeMarking : 0,
+      agencyId: agencyId || null,
+    });
     res.status(201).json({ success: true, data: exam });
   } catch (error) {
     next(error);
@@ -35,7 +43,19 @@ export const createExam = async (req, res, next) => {
 
 export const updateExam = async (req, res, next) => {
   try {
-    const exam = await Exam.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const { title, code, duration, passingMarks, agencyId, negativeMarking } = req.body;
+    const exam = await Exam.findByIdAndUpdate(
+      req.params.id,
+      {
+        title: title !== undefined ? title : undefined,
+        code: code !== undefined ? code : undefined,
+        duration: duration !== undefined ? duration : undefined,
+        passingMarks: passingMarks !== undefined ? passingMarks : undefined,
+        negativeMarking: negativeMarking !== undefined ? negativeMarking : undefined,
+        agencyId: agencyId !== undefined ? agencyId : undefined,
+      },
+      { new: true, runValidators: true }
+    );
     if (!exam) {
       return res.status(404).json({ success: false, message: 'Exam not found.' });
     }

@@ -55,7 +55,16 @@ export const create = async (req, res, next) => {
 
 export const update = async (req, res, next) => {
   try {
-    const announcement = await Announcement.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const { title, message, audience } = req.body;
+    const announcement = await Announcement.findByIdAndUpdate(
+      req.params.id,
+      {
+        title: title !== undefined ? title : undefined,
+        message: message !== undefined ? message : undefined,
+        audience: audience !== undefined ? audience : undefined,
+      },
+      { new: true, runValidators: true }
+    );
     if (!announcement) return res.status(404).json({ success: false, message: 'Announcement not found.' });
 
     await logAudit({

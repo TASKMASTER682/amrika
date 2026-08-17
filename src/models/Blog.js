@@ -8,6 +8,12 @@ const blogSchema = new mongoose.Schema({
   coverImage: { type: String, default: '' },
   tags: [{ type: String, trim: true }],
   subject: { type: String, default: '' },
+  seoSchema: {
+    type: String,
+    enum: ['BlogPosting', 'Article', 'FAQPage', 'HowTo', 'Course', 'Quiz'],
+    default: 'BlogPosting',
+  },
+  seoConfig: { type: mongoose.Schema.Types.Mixed, default: {} },
   status: {
     type: String,
     enum: ['draft', 'published'],

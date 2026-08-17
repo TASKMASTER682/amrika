@@ -39,7 +39,18 @@ export const getTestSeriesById = async (req, res, next) => {
 
 export const createTestSeries = async (req, res, next) => {
   try {
-    const series = await TestSeries.create(req.body);
+    const { title, description, examId, durationDays, price, isActive, banner, difficulty } = req.body;
+    const series = await TestSeries.create({
+      title: title || '',
+      description: description || '',
+      examId: examId || null,
+      durationDays: durationDays || 0,
+      price: price || 0,
+      isActive: isActive !== undefined ? isActive : true,
+      banner: banner || '',
+      difficulty: difficulty || 'mix',
+      author: req.user._id,
+    });
     await logAudit({
       userId: req.user._id,
       action: 'TESTSERIES_CREATE',
@@ -54,7 +65,21 @@ export const createTestSeries = async (req, res, next) => {
 
 export const updateTestSeries = async (req, res, next) => {
   try {
-    const series = await TestSeries.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const { title, description, examId, durationDays, price, isActive, banner, difficulty } = req.body;
+    const series = await TestSeries.findByIdAndUpdate(
+      req.params.id,
+      {
+        title: title !== undefined ? title : undefined,
+        description: description !== undefined ? description : undefined,
+        examId: examId !== undefined ? examId : undefined,
+        durationDays: durationDays !== undefined ? durationDays : undefined,
+        price: price !== undefined ? price : undefined,
+        isActive: isActive !== undefined ? isActive : undefined,
+        banner: banner !== undefined ? banner : undefined,
+        difficulty: difficulty || undefined,
+      },
+      { new: true, runValidators: true }
+    );
     if (!series) {
       return res.status(404).json({ success: false, message: 'Test Series not found.' });
     }

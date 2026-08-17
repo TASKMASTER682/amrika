@@ -27,6 +27,11 @@ const testSeriesSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  difficulty: {
+    type: String,
+    enum: ['hard', 'mix', 'easy'],
+    default: 'mix',
+  },
 }, {
   timestamps: true,
 });

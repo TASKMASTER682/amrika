@@ -1,6 +1,8 @@
+import jwt from 'jsonwebtoken';
 import * as AuthService from '../services/AuthService.js';
 import Referral from '../models/Referral.js';
 import { clearAuthBuckets } from '../middleware/rateLimiter.js';
+import { accessSecret, refreshSecret } from '../config/env.js';
 
 export const register = async (req, res, next) => {
   try {
@@ -16,13 +18,15 @@ export const register = async (req, res, next) => {
 
     const data = await AuthService.register(name, email, password, 'User', agencyId, examId, referralCode, signupSource, agencies);
 
-    // Send HTTP-only cookie for refresh token
-    res.cookie('refreshToken', data.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    // Only set refresh token cookie if email is already verified (Google OAuth, admin-created)
+    if (data.refreshToken) {
+      res.cookie('refreshToken', data.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+    }
 
     clearAuthBuckets(req, email);
 
@@ -32,6 +36,7 @@ export const register = async (req, res, next) => {
         user: data.user,
         token: data.token,
       },
+      emailVerified: data.emailVerified ?? false,
     });
   } catch (error) {
     next(error);
@@ -204,3 +209,102 @@ export const refresh = async (req, res, next) => {
   }
 };
 
+export const verifyEmail = async (req, res, next) => {
+  try {
+    const { token } = req.params;
+
+    // If the user is already logged in (token in params), just return status
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        code: 'BAD_REQUEST',
+        message: 'Verification token is required.',
+      });
+    }
+
+    const data = await AuthService.verifyEmail(token);
+
+    if (data.alreadyVerified) {
+      return res.status(200).json({
+        success: true,
+        message: 'Email already verified. Please log in.',
+      });
+    }
+
+    const user = data.user;
+
+    // Issue fresh tokens after verification (no password required)
+    const accessToken = jwt.sign({ id: user.id, role: user.role, name: user.name }, accessSecret, { expiresIn: '15m' });
+    const refreshToken = jwt.sign({ id: user.id }, refreshSecret, { expiresIn: '7d' });
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      success: true,
+      message: 'Email verified successfully.',
+      data: { user, token: accessToken },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resendVerification = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        code: 'BAD_REQUEST',
+        message: 'Email is required.',
+      });
+    }
+
+    const result = await AuthService.resendVerification(email);
+
+    res.json({
+      success: true,
+      message: 'Verification email sent successfully.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const googleAuth = (req, res, next) => {
+  next();
+};
+
+export const googleCallback = async (req, res, next) => {
+  try {
+    if (!req.user || !req.user.token) {
+      const redirectUrl = new URL(process.env.CLIENT_URL || 'http://localhost:3000');
+      redirectUrl.pathname = '/login';
+      redirectUrl.searchParams.set('error', 'google_auth_failed');
+      return res.redirect(redirectUrl.toString());
+    }
+
+    const { token, refreshToken, ...user } = req.user;
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    const redirectUrl = new URL(process.env.CLIENT_URL || 'http://localhost:3000');
+    redirectUrl.pathname = '/login';
+    redirectUrl.searchParams.set('provider', 'google');
+
+    res.redirect(redirectUrl.toString());
+  } catch (error) {
+    next(error);
+  }
+};

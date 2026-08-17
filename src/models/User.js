@@ -56,8 +56,11 @@ const userSchema = new mongoose.Schema({
   },
   // Phone / OTP auth (India market) — optional, enabled later
   phone: { type: String, sparse: true, trim: true },
-  phoneVerified: { type: Boolean, default: false },
-  otp: { type: String, default: null },
+   phoneVerified: { type: Boolean, default: false },
+   emailVerified: { type: Boolean, default: false },
+   emailVerificationToken: { type: String, default: null },
+   emailVerificationExpiry: { type: Date, default: null },
+   otp: { type: String, default: null },
   otpExpires: { type: Date, default: null },
   otpAttempts: { type: Number, default: 0 },
   subscription: {

@@ -2,7 +2,8 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Referral from '../models/Referral.js';
-import { accessSecret, refreshSecret, accessExpiresIn, refreshExpiresIn } from '../config/env.js';
+import { accessSecret, refreshSecret, accessExpiresIn, refreshExpiresIn, isValidEmailDomain, emailVerificationExpiresMs } from '../config/env.js';
+import { sendVerificationEmail } from './MailService.js';
 
 const generateToken = (id, role, name) => {
   return jwt.sign(
@@ -37,6 +38,14 @@ const randomOtp = () => {
 const STAFF_ROLES = ['Super Admin', 'Content Manager', 'Support'];
 
 export const register = async (name, email, password, role, agencyId, examId, referralCode, signupSource, agencies) => {
+  // Only allow emails from approved domains (gmail.com, outlook.com, etc.)
+  if (!isValidEmailDomain(email)) {
+    const error = new Error('This email domain is not allowed. Please use a valid email address (e.g. gmail.com, outlook.com).');
+    error.statusCode = 400;
+    error.code = 'DOMAIN_NOT_ALLOWED';
+    throw error;
+  }
+
   const existingUser = await User.findOne({ email });
   if (existingUser) {
     const error = new Error('A user with this email address already exists.');
@@ -51,7 +60,7 @@ export const register = async (name, email, password, role, agencyId, examId, re
     if (referrer) referredBy = referrer._id;
   }
 
-  const user = await User.create({
+   const user = await User.create({
     name,
     email,
     password,
@@ -65,6 +74,12 @@ export const register = async (name, email, password, role, agencyId, examId, re
     signupSource: signupSource || 'web',
   });
 
+  // Generate email verification token
+  const verificationToken = crypto.randomBytes(32).toString('hex');
+  user.emailVerificationToken = verificationToken;
+  user.emailVerificationExpiry = new Date(Date.now() + emailVerificationExpiresMs);
+  await user.save();
+
   if (referredBy) {
     const code = randomCode(`REF${referredBy.toString().slice(-4).toUpperCase()}`, 2);
     // Two-step so the first referral still increments the count (MongoDB ignores
@@ -77,8 +92,14 @@ export const register = async (name, email, password, role, agencyId, examId, re
     await Referral.updateOne({ user: referredBy }, { $inc: { referralCount: 1 } });
   }
 
-  const token = generateToken(user._id, user.role, user.name);
+   const token = generateToken(user._id, user.role, user.name);
   const refreshToken = generateRefreshToken(user._id);
+
+  // Send verification email (non-blocking)
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+  sendVerificationEmail(email, name, verificationToken, clientUrl).catch((e) =>
+    console.warn('[AuthService] Failed to send verification email:', e.message)
+  );
 
   return {
     user: {
@@ -86,14 +107,16 @@ export const register = async (name, email, password, role, agencyId, examId, re
       name: user.name,
       email: user.email,
       role: user.role,
+      emailVerified: user.emailVerified,
       primaryAgency: user.primaryAgency,
       primaryExam: user.primaryExam,
       agencies: user.agencies,
       exams: user.exams,
       referralCode: user.referralCode,
     },
-    token,
-    refreshToken,
+    token: null,
+    refreshToken: null,
+    emailVerified: false,
   };
 };
 
@@ -118,6 +141,13 @@ export const login = async (email, password) => {
     const error = new Error('Account suspended. Please contact admin.');
     error.statusCode = 403;
     error.code = 'ACCOUNT_SUSPENDED';
+    throw error;
+  }
+
+  if (!user.emailVerified) {
+    const error = new Error('Please verify your email address before logging in. Check your inbox for the verification link.');
+    error.statusCode = 403;
+    error.code = 'EMAIL_NOT_VERIFIED';
     throw error;
   }
 
@@ -255,6 +285,110 @@ export const verifyOtpLogin = async (phone, otp) => {
   await user.save();
 
   return buildAuthResponse(user);
+};
+
+// Verify email via token
+export const verifyEmail = async (token) => {
+  if (!token) {
+    const error = new Error('Verification token is required.');
+    error.statusCode = 400;
+    error.code = 'INVALID_TOKEN';
+    throw error;
+  }
+
+  const user = await User.findOne({
+    emailVerificationToken: token,
+    emailVerificationExpiry: { $gt: new Date() },
+  });
+
+  if (!user) {
+    const error = new Error('Invalid or expired verification link. Please request a new one.');
+    error.statusCode = 400;
+    error.code = 'INVALID_OR_EXPIRED_TOKEN';
+    throw error;
+  }
+
+  user.emailVerified = true;
+  user.emailVerificationToken = null;
+  user.emailVerificationExpiry = null;
+  await user.save();
+
+  return {
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      emailVerified: true,
+      agencies: user.agencies,
+      exams: user.exams,
+      referralCode: user.referralCode,
+    },
+  };
+};
+
+// Resend verification email
+export const resendVerification = async (email) => {
+  const user = await User.findOne({ email });
+  if (!user) return { sent: true }; // Don't reveal whether the email exists
+
+  if (user.emailVerified) {
+    return { alreadyVerified: true, user: { id: user._id, name: user.name, email: user.email } };
+  }
+
+  const verificationToken = crypto.randomBytes(32).toString('hex');
+  user.emailVerificationToken = verificationToken;
+  user.emailVerificationExpiry = new Date(Date.now() + emailVerificationExpiresMs);
+  await user.save();
+
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+  await sendVerificationEmail(email, user.name, verificationToken, clientUrl);
+
+  return { sent: true };
+};
+
+// Google OAuth callback — find or create user, verify domain, then issue tokens
+export const googleCallback = async (profile, done) => {
+  try {
+    const email = profile.emails?.[0]?.value?.toLowerCase();
+    if (!email) return done(null, false, { message: 'No email provided by Google.' });
+
+    // Enforce allowed domains for Google sign-in too
+    if (!isValidEmailDomain(email)) {
+      return done(null, false, { message: 'This email domain is not allowed.' });
+    }
+
+    let user = await User.findOne({ email });
+    if (!user) {
+      // Auto-create account with Google-verified email (no password needed)
+      user = await User.create({
+        name: profile.displayName || profile.emails[0].value.split('@')[0] || 'Google User',
+        email,
+        password: crypto.randomBytes(32).toString('hex'), // random placeholder — they'll never use it
+        role: 'User',
+        signupSource: 'google',
+        referralCode: randomCode('REF', 6),
+        emailVerified: true, // Google already verified the email
+      });
+    } else if (!user.emailVerified) {
+      user.emailVerified = true;
+      await user.save();
+    }
+
+    const token = generateToken(user._id, user.role, user.name);
+    const refreshToken = generateRefreshToken(user._id);
+
+    return done(null, {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      token,
+      refreshToken,
+    });
+  } catch (err) {
+    return done(err);
+  }
 };
 
 export const refresh = async (refreshToken) => {

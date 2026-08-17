@@ -141,6 +141,10 @@ export const saveProgress = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Test attempt session not found' });
     }
 
+    if (attempt.studentId.toString() !== req.user._id.toString() && req.user.role === 'User') {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
     if (attempt.status !== 'In Progress') {
       return res.status(400).json({ success: false, message: 'This test attempt has already been submitted.' });
     }
@@ -187,6 +191,10 @@ export const submitTest = async (req, res, next) => {
     const attempt = await TestAttempt.findById(attemptId);
     if (!attempt) {
       return res.status(404).json({ success: false, message: 'Test attempt session not found' });
+    }
+
+    if (attempt.studentId.toString() !== req.user._id.toString() && req.user.role === 'User') {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
     if (attempt.status !== 'In Progress') {
@@ -237,6 +245,10 @@ export const getAttemptResults = async (req, res, next) => {
 
     if (!attempt) {
       return res.status(404).json({ success: false, message: 'Attempt not found' });
+    }
+
+    if (attempt.studentId.toString() !== req.user._id.toString() && req.user.role === 'User') {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
     if (attempt.status !== 'Submitted') {

@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import { allowedEmailDomains } from '../config/env.js';
+
+// Only allow emails from approved consumer mail providers
+const isAllowedDomain = (email) => {
+  const domain = String(email || '').split('@')[1]?.toLowerCase();
+  return domain ? allowedEmailDomains.includes(domain) : false;
+};
 
 export const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id');
 
@@ -18,7 +25,13 @@ export const registerSchema = z.object({
   referralCode: z.string().trim().optional().nullable(),
   signupSource: z.string().trim().max(50).optional(),
   agencies: z.array(objectId).max(20).optional(),
-});
+}).refine(
+  (data) => isAllowedDomain(data.email),
+  {
+    path: ['email'],
+    message: 'This email domain is not allowed. Please use a valid email address (e.g. gmail.com, outlook.com).',
+  }
+);
 
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email('Enter a valid email address'),

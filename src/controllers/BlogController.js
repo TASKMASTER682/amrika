@@ -79,7 +79,7 @@ const sanitizeHtml = (html = '') => {
 
 export const createBlog = async (req, res, next) => {
   try {
-    const { title, slug, excerpt, content, coverImage, tags, subject, status, materials } = req.body;
+    const { title, slug, excerpt, content, coverImage, tags, subject, status, materials, seoSchema, seoConfig } = req.body;
     const contentHtml = sanitizeHtml(content);
 
     // Derive title + description from the pasted HTML for SEO meta tags.
@@ -100,6 +100,8 @@ export const createBlog = async (req, res, next) => {
       coverImage: coverImage || '',
       tags: finalTags,
       subject: subject || '',
+      seoSchema: seoSchema || 'BlogPosting',
+      seoConfig: seoConfig && typeof seoConfig === 'object' ? seoConfig : {},
       status: status === 'published' ? 'published' : 'draft',
       materials: Array.isArray(materials) ? materials : [],
       author: req.user._id,

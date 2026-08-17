@@ -59,8 +59,26 @@ export const getQuestionById = async (req, res, next) => {
 
 export const createQuestion = async (req, res, next) => {
   try {
+    const { body, options, correctAnswer, type, subject, topic, subtopic, context, statements, matchPairs, subQ, difficulty, language, explanation, source, year, usageStatus, approvalStatus } = req.body;
     const questionData = {
-      ...req.body,
+      body: body || '',
+      options: options || [],
+      correctAnswer: correctAnswer || '',
+      type: type || 'MCQ',
+      subject: subject || 'General',
+      topic: topic || 'General',
+      subtopic: subtopic || '',
+      context: context || '',
+      statements: statements || [],
+      matchPairs: matchPairs || [],
+      subQ: subQ || '',
+      difficulty: difficulty || 'Medium',
+      language: language || 'English',
+      explanation: explanation || '',
+      source: source || '',
+      year: year !== undefined ? Number(year) : new Date().getFullYear(),
+      usageStatus: usageStatus || 'unused',
+      approvalStatus: approvalStatus || 'Pending',
       createdBy: req.user._id,
       version: 1,
     };
@@ -73,10 +91,7 @@ export const createQuestion = async (req, res, next) => {
 
 export const updateQuestion = async (req, res, next) => {
   try {
-    const question = await Question.findById(req.params.id);
-    if (!question) {
-      return res.status(404).json({ success: false, message: 'Question not found.' });
-    }
+    const { body, options, correctAnswer, type, subject, topic, subtopic, context, statements, matchPairs, subQ, difficulty, language, explanation, source, year, usageStatus, approvalStatus } = req.body;
 
     // Keep track of revision history
     const historyItem = {
@@ -87,7 +102,24 @@ export const updateQuestion = async (req, res, next) => {
     };
 
     const updateData = {
-      ...req.body,
+      ...(body !== undefined && { body: body || '' }),
+      ...(options !== undefined && { options: options || [] }),
+      ...(correctAnswer !== undefined && { correctAnswer: correctAnswer || '' }),
+      ...(type !== undefined && { type: type || 'MCQ' }),
+      ...(subject !== undefined && { subject: subject || 'General' }),
+      ...(topic !== undefined && { topic: topic || 'General' }),
+      ...(subtopic !== undefined && { subtopic: subtopic || '' }),
+      ...(context !== undefined && { context: context || '' }),
+      ...(statements !== undefined && { statements: statements || [] }),
+      ...(matchPairs !== undefined && { matchPairs: matchPairs || [] }),
+      ...(subQ !== undefined && { subQ: subQ || '' }),
+      ...(difficulty !== undefined && { difficulty: difficulty || 'Medium' }),
+      ...(language !== undefined && { language: language || 'English' }),
+      ...(explanation !== undefined && { explanation: explanation || '' }),
+      ...(source !== undefined && { source: source || '' }),
+      ...(year !== undefined && { year: Number(year) }),
+      ...(usageStatus !== undefined && { usageStatus: usageStatus || 'unused' }),
+      ...(approvalStatus !== undefined && { approvalStatus: approvalStatus || 'Pending' }),
       version: question.version + 1,
       $push: { revisionHistory: historyItem },
     };
@@ -97,7 +129,9 @@ export const updateQuestion = async (req, res, next) => {
       updateData,
       { new: true, runValidators: true }
     );
-
+    if (!updatedQuestion) {
+      return res.status(404).json({ success: false, message: 'Question not found.' });
+    }
     res.json({ success: true, data: updatedQuestion });
   } catch (error) {
     next(error);

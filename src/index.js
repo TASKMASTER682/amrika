@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
+import passport from './config/passport.js';
 import { connectDB } from './config/db.js';
 import { applySecurity } from './middleware/security.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
@@ -91,6 +92,9 @@ applySecurity(app);
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Initialize Passport for Google OAuth
+app.use(passport.initialize());
 
 // General API rate limiter, plus a tighter one for auth credentials (mounted per-route in authRoutes)
 // The analytics track endpoint is skipped here — it has its own tighter limiter and must never
