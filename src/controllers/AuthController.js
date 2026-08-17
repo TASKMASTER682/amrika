@@ -37,6 +37,7 @@ export const register = async (req, res, next) => {
         token: data.token,
       },
       emailVerified: data.emailVerified ?? false,
+      message: 'Account created successfully. Please check your email to verify your account.',
     });
   } catch (error) {
     next(error);

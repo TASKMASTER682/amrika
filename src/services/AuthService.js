@@ -95,11 +95,14 @@ export const register = async (name, email, password, role, agencyId, examId, re
    const token = generateToken(user._id, user.role, user.name);
   const refreshToken = generateRefreshToken(user._id);
 
-  // Send verification email (non-blocking)
+  // Send verification email (blocking — fail loudly if mail service is down)
   const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-  sendVerificationEmail(email, name, verificationToken, clientUrl).catch((e) =>
-    console.warn('[AuthService] Failed to send verification email:', e.message)
-  );
+  try {
+    await sendVerificationEmail(email, name, verificationToken, clientUrl);
+  } catch (e) {
+    console.warn('[AuthService] Failed to send verification email:', e.message);
+    throw new Error('Verification email could not be sent. Please try again later or contact support.');
+  }
 
   return {
     user: {
