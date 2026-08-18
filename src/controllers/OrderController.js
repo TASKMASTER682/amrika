@@ -18,20 +18,22 @@ const getRazorpayConfig = async () => {
     return cachedConfig;
   }
 
+  // Env vars take priority so .env changes always apply (stale DB rows can't
+  // override a key the operator just rotated). DB config is a fallback only.
+  const envKeyId = process.env.RAZORPAY_KEY_ID;
+  const envKeySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  if (envKeyId && envKeySecret) {
+    cachedConfig = { keyId: envKeyId, keySecret: envKeySecret };
+    console.log("Razorpay config loaded from ENV");
+    return cachedConfig;
+  }
+
   const config = await RazorpayConfig.findOne({});
 
   if (config?.keyId && config?.keySecret) {
     cachedConfig = { keyId: config.keyId, keySecret: config.keySecret };
     console.log("Razorpay config loaded from DB");
-    return cachedConfig;
-  }
-
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-
-  if (keyId && keySecret) {
-    cachedConfig = { keyId, keySecret };
-    console.log("Razorpay config loaded from ENV");
     return cachedConfig;
   }
 
@@ -118,6 +120,8 @@ export const checkout = async (req, res, next) => {
     const rzp = await getRazorpay();
     const config = await getRazorpayConfig();
     let razorpayOrderId;
+    let razorpayQrId;
+    let razorpayQrImage;
     let mode = 'offline';
     if (rzp) {
       const rzpOrder = await rzp.orders.create({
@@ -131,6 +135,29 @@ export const checkout = async (req, res, next) => {
       order.paymentProvider = 'razorpay';
       await order.save();
       mode = 'razorpay';
+
+      // Generate a real Razorpay UPI QR for this order. The QR carries Razorpay's
+      // own valid UPI handle (works with GPay/PhonePe/Paytm) and lets us detect the
+      // payment via the QR's payment list — no fragile merchant-VPA raw upi:// link.
+      try {
+        const qr = await rzp.qrCode.create({
+          type: 'upi_qr',
+          name: process.env.RAZORPAY_MERCHANT_NAME || 'ExamOS',
+          usage_limit: 1,
+          fixed_amount: true,
+          payment_amount: Math.round(payable * 100),
+          description: `Payment for ${entity.name || entity.title}`,
+          notes: { orderId: String(order._id) },
+        });
+        razorpayQrId = qr.id;
+        razorpayQrImage = qr.data || qr.image_url || null;
+        order.razorpayQrId = razorpayQrId;
+        await order.save();
+      } catch (qrErr) {
+        console.warn('[Order] Razorpay QR creation failed, falling back to checkout:', qrErr.message);
+        razorpayQrId = null;
+        razorpayQrImage = null;
+      }
     }
 
     const merchantVpa = process.env.RAZORPAY_MERCHANT_VPA || 'success@razorpay';
@@ -142,6 +169,8 @@ export const checkout = async (req, res, next) => {
       data: {
         orderId: order._id,
         razorpayOrderId,
+        razorpayQrId,
+        razorpayQrImage,
         mode,
         keyId: config?.keyId ?? null,
         amount: payable,
@@ -334,6 +363,22 @@ export const getOrderStatus = async (req, res, next) => {
           }
         } catch (e) {
           // Razorpay API error — still return current DB status
+        }
+
+        // UPI QR fallback: list payments collected against the QR.
+        if (order.razorpayQrId) {
+          try {
+            const payments = await rzp.qrCode.fetchAllPayments(order.razorpayQrId);
+            const captured = (payments.items || []).find((p) => p.status === 'captured');
+            if (captured) {
+              order.status = 'paid';
+              order.paymentId = captured.id;
+              await order.save();
+              return res.json({ success: true, data: { status: 'paid', orderId: order._id } });
+            }
+          } catch (e) {
+            // QR payment fetch failed — keep polling via order status
+          }
         }
       }
     }

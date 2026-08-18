@@ -12,6 +12,7 @@ const orderSchema = new mongoose.Schema({
   paymentProvider: { type: String, enum: ['razorpay', 'offline'], default: 'razorpay' },
   paymentId: String,
   razorpayOrderId: String,
+  razorpayQrId: String,
   couponCode: String,
   discount: { type: Number, default: 0 },
 }, {

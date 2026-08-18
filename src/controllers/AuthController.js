@@ -302,8 +302,10 @@ export const googleCallback = async (req, res, next) => {
 
     const redirectUrl = new URL(CLIENT_URL);
     redirectUrl.pathname = '/login';
-    redirectUrl.searchParams.set('provider', 'google');
-    redirectUrl.searchParams.set('new', isNewUser ? '1' : '0');
+    // Token goes in the URL hash (never a query param): the fragment is not sent
+    // to any server or logged, and it survives cross-origin redirects that block
+    // third-party cookies. The frontend reads it, then clears the hash.
+    redirectUrl.hash = `provider=google&new=${isNewUser ? '1' : '0'}&token=${encodeURIComponent(token)}`;
 
     res.redirect(redirectUrl.toString());
   } catch (error) {
