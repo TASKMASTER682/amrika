@@ -2,16 +2,51 @@ import Test from '../models/Test.js';
 import Question from '../models/Question.js';
 import { canAttemptTest, getTestAvailability, isWithinFreeWindow } from '../services/AccessService.js';
 
+// Normalizes a client-supplied section into the schema shape. Accepts both
+// `questions` (ObjectId string refs) and `questionIds` (frontend builder naming).
+const normalizeSection = (sec) => {
+  const rawQuestions = sec.questions || sec.questionIds || [];
+  return {
+    name: sec.name || 'Section',
+    duration: Number(sec.duration) || 0,
+    questions: (Array.isArray(rawQuestions) ? rawQuestions : []).filter(Boolean),
+    negativeMarking: sec.negativeMarking !== undefined ? !!sec.negativeMarking : true,
+    marksPerQuestion: Number(sec.marksPerQuestion) || 2,
+    negativeMarksPerQuestion: Number(sec.negativeMarksPerQuestion) || 0.5,
+  };
+};
+
 export const createTest = async (req, res, next) => {
   try {
-    const { title, examId, testSeriesId, sections, duration, passingMarks, negativeMarking } = req.body;
+    const {
+      title, description, examId, testSeriesId, sections, duration, passingMarks,
+      negativeMarking, attemptLimit, calculatorAllowed, fullscreenRequired,
+      shuffleQuestions, shuffleOptions, scheduled, startTime, endTime,
+      includedInSubscription, freeWindow, status,
+    } = req.body;
+
     const test = await Test.create({
       title: title || '',
+      description: description || '',
       examId: examId || null,
       testSeriesId: testSeriesId || null,
       duration: duration || 0,
       passingMarks: passingMarks !== undefined ? passingMarks : 0,
       negativeMarking: negativeMarking !== undefined ? negativeMarking : 0,
+      attemptLimit: attemptLimit !== undefined ? attemptLimit : 1,
+      calculatorAllowed: !!calculatorAllowed,
+      fullscreenRequired: fullscreenRequired !== undefined ? !!fullscreenRequired : true,
+      shuffleQuestions: shuffleQuestions !== undefined ? !!shuffleQuestions : true,
+      shuffleOptions: shuffleOptions !== undefined ? !!shuffleOptions : true,
+      scheduled: !!scheduled,
+      startTime: scheduled && startTime ? new Date(startTime) : undefined,
+      endTime: scheduled && endTime ? new Date(endTime) : undefined,
+      includedInSubscription: !!includedInSubscription,
+      freeWindow: freeWindow && (freeWindow.from || freeWindow.to)
+        ? { from: freeWindow.from ? new Date(freeWindow.from) : null, to: freeWindow.to ? new Date(freeWindow.to) : null }
+        : { from: null, to: null },
+      sections: Array.isArray(sections) ? sections.map(normalizeSection) : [],
+      status: status || 'draft',
     });
     res.status(201).json({ success: true, data: test });
   } catch (error) {
@@ -69,17 +104,43 @@ export const getTestById = async (req, res, next) => {
 
 export const updateTest = async (req, res, next) => {
   try {
-    const { title, examId, testSeriesId, sections, duration, passingMarks, negativeMarking } = req.body;
+    const {
+      title, description, examId, testSeriesId, sections, duration, passingMarks,
+      negativeMarking, attemptLimit, calculatorAllowed, fullscreenRequired,
+      shuffleQuestions, shuffleOptions, scheduled, startTime, endTime,
+      includedInSubscription, freeWindow, status,
+    } = req.body;
+
+    const updateData = {
+      ...(title !== undefined && { title }),
+      ...(description !== undefined && { description }),
+      ...(examId !== undefined && { examId: examId || null }),
+      ...(testSeriesId !== undefined && { testSeriesId: testSeriesId || null }),
+      ...(duration !== undefined && { duration }),
+      ...(passingMarks !== undefined && { passingMarks }),
+      ...(negativeMarking !== undefined && { negativeMarking }),
+      ...(attemptLimit !== undefined && { attemptLimit }),
+      ...(calculatorAllowed !== undefined && { calculatorAllowed: !!calculatorAllowed }),
+      ...(fullscreenRequired !== undefined && { fullscreenRequired: !!fullscreenRequired }),
+      ...(shuffleQuestions !== undefined && { shuffleQuestions: !!shuffleQuestions }),
+      ...(shuffleOptions !== undefined && { shuffleOptions: !!shuffleOptions }),
+      ...(scheduled !== undefined && { scheduled: !!scheduled }),
+      ...(startTime !== undefined && { startTime: scheduled ? new Date(startTime) : null }),
+      ...(endTime !== undefined && { endTime: scheduled ? new Date(endTime) : null }),
+      ...(includedInSubscription !== undefined && { includedInSubscription: !!includedInSubscription }),
+      ...(freeWindow !== undefined && {
+        freeWindow: {
+          from: freeWindow?.from ? new Date(freeWindow.from) : null,
+          to: freeWindow?.to ? new Date(freeWindow.to) : null,
+        },
+      }),
+      ...(Array.isArray(sections) && { sections: sections.map(normalizeSection) }),
+      ...(status !== undefined && { status }),
+    };
+
     const test = await Test.findByIdAndUpdate(
       req.params.id,
-      {
-        title: title !== undefined ? title : undefined,
-        examId: examId !== undefined ? examId : undefined,
-        testSeriesId: testSeriesId !== undefined ? testSeriesId : undefined,
-        duration: duration !== undefined ? duration : undefined,
-        passingMarks: passingMarks !== undefined ? passingMarks : undefined,
-        negativeMarking: negativeMarking !== undefined ? negativeMarking : undefined,
-      },
+      updateData,
       { new: true, runValidators: true }
     );
     if (!test) {

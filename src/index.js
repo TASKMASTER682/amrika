@@ -35,6 +35,7 @@ import studentAnalyticsRoutes from './routes/studentAnalyticsRoutes.js';
 import blogRoutes from './routes/blogRoutes.js';
 import errorLogRoutes from './routes/errorLogRoutes.js';
 import { startKeepAlive } from './jobs/keepAlive.js';
+import { startUnverifiedUserCleanup } from './jobs/unverifiedUserCleanup.js';
 
 // Connect to Database
 connectDB().then(() => {
@@ -161,4 +162,5 @@ app.use(errorHandler);
 server.listen(port, () => {
   console.log(`ExamOS Enterprise Server running in ${process.env.NODE_ENV} mode on port ${port}`);
   startKeepAlive();
+  startUnverifiedUserCleanup();
 });

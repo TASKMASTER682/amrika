@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import * as AuthService from '../services/AuthService.js';
 import Referral from '../models/Referral.js';
 import { clearAuthBuckets } from '../middleware/rateLimiter.js';
-import { accessSecret, refreshSecret } from '../config/env.js';
+import { accessSecret, refreshSecret, CLIENT_URL } from '../config/env.js';
 
 export const register = async (req, res, next) => {
   try {
@@ -169,7 +169,7 @@ export const myReferral = async (req, res, next) => {
         code: user.referralCode || referral?.code || null,
         referralCount: referral?.referralCount || 0,
         rewardAmount: referral?.rewardAmount || 0,
-        link: user.referralCode ? `${process.env.CLIENT_URL || 'http://localhost:3000'}/register?ref=${user.referralCode}` : null,
+        link: user.referralCode ? `${CLIENT_URL}/register?ref=${user.referralCode}` : null,
       },
     });
   } catch (error) {
@@ -285,13 +285,13 @@ export const googleAuth = (req, res, next) => {
 export const googleCallback = async (req, res, next) => {
   try {
     if (!req.user || !req.user.token) {
-      const redirectUrl = new URL(process.env.CLIENT_URL || 'http://localhost:3000');
+      const redirectUrl = new URL(CLIENT_URL);
       redirectUrl.pathname = '/login';
       redirectUrl.searchParams.set('error', 'google_auth_failed');
       return res.redirect(redirectUrl.toString());
     }
 
-    const { token, refreshToken, ...user } = req.user;
+    const { token, refreshToken, isNewUser, ...user } = req.user;
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
@@ -300,9 +300,10 @@ export const googleCallback = async (req, res, next) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    const redirectUrl = new URL(process.env.CLIENT_URL || 'http://localhost:3000');
+    const redirectUrl = new URL(CLIENT_URL);
     redirectUrl.pathname = '/login';
     redirectUrl.searchParams.set('provider', 'google');
+    redirectUrl.searchParams.set('new', isNewUser ? '1' : '0');
 
     res.redirect(redirectUrl.toString());
   } catch (error) {

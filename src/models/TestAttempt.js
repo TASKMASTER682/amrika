@@ -63,6 +63,7 @@ const testAttemptSchema = new mongoose.Schema({
   // Resumable CBT Engine State
   activeSectionIndex: { type: Number, default: 0 },
   remainingSeconds: { type: Number, required: true }, // keeps track of time remaining
+  sectionTimeLeft: [Number], // per-section remaining seconds (0 = no limit)
   lastHeartbeat: { type: Date, default: Date.now },
   
   // Post-submission Analytics (computed on submit)

@@ -59,5 +59,6 @@ export const isValidEmailDomain = (email) => {
   return domain ? allowedEmailDomains.includes(domain) : false;
 };
 
-// Email verification
-export const emailVerificationExpiresMs = Number(process.env.EMAIL_VERIFICATION_EXPIRES_MS) || 24 * 60 * 60 * 1000;
+// Email verification — the link expires after this window. Unverified accounts
+// whose window has elapsed are deleted by the cleanup job in src/jobs/.
+export const emailVerificationExpiresMs = Number(process.env.EMAIL_VERIFICATION_EXPIRES_MS) || 10 * 60 * 1000;

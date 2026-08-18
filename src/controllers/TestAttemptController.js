@@ -20,6 +20,34 @@ const getAuthoritativeRemaining = (attempt, test) => {
   return Math.max(0, durationSec - elapsedSec);
 };
 
+// Computes the authoritative per-section remaining time from the server clock.
+// Sections are attempted sequentially: each timed section owns a fixed window that
+// starts when the previous section's window ends (or at test start for the first).
+// Untimed sections (duration 0) consume no window, so the next timed section starts
+// from the end of the last timed window.
+const getAuthoritativeSectionTimes = (attempt, test) => {
+  const sections = test?.sections || [];
+  if (sections.length === 0) return [];
+  const started = attempt.startedAt ? new Date(attempt.startedAt).getTime() : Date.now();
+  const elapsedSec = Math.max(0, Math.floor((Date.now() - started) / 1000));
+
+  // Build the cumulative schedule: windowStart[i] = sum of durations of all
+  // timed sections before i.
+  const limits = sections.map(sec => Number(sec.duration) > 0 ? Number(sec.duration) * 60 : 0);
+  const windowStart = [];
+  let acc = 0;
+  for (let i = 0; i < limits.length; i++) {
+    windowStart.push(acc);
+    if (limits[i] > 0) acc += limits[i];
+  }
+
+  return limits.map((lim, i) => {
+    if (lim <= 0) return 0; // no limit
+    const spentInWindow = Math.max(0, elapsedSec - windowStart[i]);
+    return Math.max(0, lim - spentInWindow);
+  });
+};
+
 export const startTest = async (req, res, next) => {
   try {
     const { testId } = req.body;
@@ -83,6 +111,9 @@ export const startTest = async (req, res, next) => {
       // Never resume with more time than the server clock allows.
       const authRemaining = getAuthoritativeRemaining(existingInProgress, test);
       if (authRemaining !== null) existingInProgress.remainingSeconds = authRemaining;
+      // Refresh the per-section windows from the server clock as well.
+      const authSectionTimes = getAuthoritativeSectionTimes(existingInProgress, test);
+      if (authSectionTimes.length > 0) existingInProgress.sectionTimeLeft = authSectionTimes;
       return res.json({
         success: true,
         message: 'Resuming active session.',
@@ -110,6 +141,11 @@ export const startTest = async (req, res, next) => {
       });
     });
 
+    // Per-section time limits (seconds). A section with duration 0 has no limit.
+    const sectionTimeLeft = (test.sections || []).map(sec =>
+      Number(sec.duration) > 0 ? Number(sec.duration) * 60 : 0
+    );
+
     const attempt = await TestAttempt.create({
       studentId,
       testId,
@@ -117,6 +153,9 @@ export const startTest = async (req, res, next) => {
       status: 'In Progress',
       remainingSeconds: test.duration * 60,
       answers,
+      activeSectionIndex: 0,
+      sectionTimeLeft,
+      startedAt: new Date(),
     });
 
     await attempt.populate('answers.questionId');
@@ -134,7 +173,7 @@ export const startTest = async (req, res, next) => {
 export const saveProgress = async (req, res, next) => {
   try {
     const { attemptId } = req.params;
-    const { answers, remainingSeconds, activeSectionIndex } = req.body;
+    const { answers, remainingSeconds, activeSectionIndex, sectionTimeLeft } = req.body;
 
     const attempt = await TestAttempt.findById(attemptId);
     if (!attempt) {
@@ -163,14 +202,39 @@ export const saveProgress = async (req, res, next) => {
 
     // Clamp the client-supplied remaining time against the server clock so a
     // tampered payload can never extend the test beyond its real deadline.
-    const test = await Test.findById(attempt.testId).select('duration');
+    const test = await Test.findById(attempt.testId).select('duration sections');
     const authRemaining = getAuthoritativeRemaining(attempt, test);
     if (authRemaining !== null) {
       attempt.remainingSeconds = Math.min(Number(remainingSeconds) || 0, authRemaining);
     } else {
       attempt.remainingSeconds = remainingSeconds;
     }
-    attempt.activeSectionIndex = activeSectionIndex;
+
+    // Per-section time enforcement: derive from the server clock, never trust the client.
+    const authSectionTimes = getAuthoritativeSectionTimes(attempt, test);
+    if (authSectionTimes.length > 0) {
+      const hasTimedSection = authSectionTimes.some(t => t > 0) || test?.sections?.some(s => Number(s.duration) > 0);
+      // Honor a valid client-provided section index (used to render the active tab),
+      // but cap it so it can never exceed the number of sections.
+      const clientIdx = Number(activeSectionIndex) || 0;
+      const maxIdx = Math.max(0, authSectionTimes.length - 1);
+      // Auto-advance past any sections whose window has fully expired.
+      let effIdx = Math.min(clientIdx, maxIdx);
+      while (effIdx < maxIdx && authSectionTimes[effIdx] === 0 && Number(test.sections[effIdx]?.duration) > 0) {
+        effIdx++;
+      }
+      // Only prevent going backwards when a timed section was active — with a
+      // timed window already spent, the user must not slip back into it. Untimed
+      // sections stay free to re-enter.
+      if (hasTimedSection && effIdx < attempt.activeSectionIndex && Number(test.sections[attempt.activeSectionIndex]?.duration) > 0) {
+        effIdx = attempt.activeSectionIndex;
+      }
+      attempt.activeSectionIndex = effIdx;
+      attempt.sectionTimeLeft = authSectionTimes;
+    } else {
+      attempt.activeSectionIndex = activeSectionIndex;
+      attempt.sectionTimeLeft = Array.isArray(sectionTimeLeft) ? sectionTimeLeft : [];
+    }
     attempt.lastHeartbeat = new Date();
 
     await attempt.save();
@@ -178,6 +242,10 @@ export const saveProgress = async (req, res, next) => {
     res.json({
       success: true,
       message: 'Progress saved successfully.',
+      data: {
+        activeSectionIndex: attempt.activeSectionIndex,
+        sectionTimeLeft: attempt.sectionTimeLeft,
+      },
     });
   } catch (error) {
     next(error);

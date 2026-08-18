@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Referral from '../models/Referral.js';
-import { accessSecret, refreshSecret, accessExpiresIn, refreshExpiresIn, isValidEmailDomain, emailVerificationExpiresMs } from '../config/env.js';
+import { accessSecret, refreshSecret, accessExpiresIn, refreshExpiresIn, isValidEmailDomain, emailVerificationExpiresMs, CLIENT_URL } from '../config/env.js';
 import { sendVerificationEmail } from './MailService.js';
 
 const generateToken = (id, role, name) => {
@@ -96,12 +96,13 @@ export const register = async (name, email, password, role, agencyId, examId, re
   const refreshToken = generateRefreshToken(user._id);
 
   // Send verification email (blocking — fail loudly if mail service is down)
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+  const clientUrl = CLIENT_URL;
+  let emailSent = false;
   try {
     await sendVerificationEmail(email, name, verificationToken, clientUrl);
+    emailSent = true;
   } catch (e) {
     console.warn('[AuthService] Failed to send verification email:', e.message);
-    throw new Error('Verification email could not be sent. Please try again later or contact support.');
   }
 
   return {
@@ -117,9 +118,10 @@ export const register = async (name, email, password, role, agencyId, examId, re
       exams: user.exams,
       referralCode: user.referralCode,
     },
-    token: null,
-    refreshToken: null,
+    token: generateToken(user._id, user.role, user.name),
+    refreshToken: generateRefreshToken(user._id),
     emailVerified: false,
+    emailSent,
   };
 };
 
@@ -344,7 +346,7 @@ export const resendVerification = async (email) => {
   user.emailVerificationExpiry = new Date(Date.now() + emailVerificationExpiresMs);
   await user.save();
 
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+  const clientUrl = CLIENT_URL;
   await sendVerificationEmail(email, user.name, verificationToken, clientUrl);
 
   return { sent: true };
@@ -362,8 +364,10 @@ export const googleCallback = async (profile, done) => {
     }
 
     let user = await User.findOne({ email });
+    let isNewUser = false;
     if (!user) {
       // Auto-create account with Google-verified email (no password needed)
+      isNewUser = true;
       user = await User.create({
         name: profile.displayName || profile.emails[0].value.split('@')[0] || 'Google User',
         email,
@@ -388,6 +392,7 @@ export const googleCallback = async (profile, done) => {
       role: user.role,
       token,
       refreshToken,
+      isNewUser,
     });
   } catch (err) {
     return done(err);
