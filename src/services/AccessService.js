@@ -50,8 +50,10 @@ export const isSeriesCoveredByPlan = (plan, series) => {
 // Is the test currently inside its public free-access window (Sunday free mock, trials)?
 export const isWithinFreeWindow = (test) => {
   if (!test?.freeWindow) return false;
-  const opens = test.freeWindow.from ? new Date(test.freeWindow.from).getTime() : -Infinity;
-  const closes = test.freeWindow.to ? new Date(test.freeWindow.to).getTime() : Infinity;
+  const { from, to } = test.freeWindow;
+  if (!from && !to) return false; // no free window configured
+  const opens = from ? new Date(from).getTime() : -Infinity;
+  const closes = to ? new Date(to).getTime() : Infinity;
   const now = Date.now();
   return now >= opens && now <= closes;
 };
