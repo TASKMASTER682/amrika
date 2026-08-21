@@ -20,11 +20,15 @@ router.post('/paste', authorize(...contentRoles), QuestionController.pasteQuesti
 router.get('/duplicates', authorize(...contentRoles), QuestionController.findDuplicateQuestions);
 router.get('/staged/duplicates', authorize(...contentRoles), QuestionController.findStagedDuplicates);
 
-// Master Question bank routes
-router.get('/', QuestionController.listQuestions);
-router.get('/subjects', QuestionController.listSubjects);
+// Master Question bank routes — any logged-in user could otherwise scrape the
+// entire paid bank (correctAnswer/explanation/formula are on every doc). Only
+// staff may read the bank; tests serve questions via TestController.getTestById,
+// which strips answers for end users.
+const staffReadRoles = ['Super Admin', 'Content Manager', 'Support'];
+router.get('/', authorize(...staffReadRoles), QuestionController.listQuestions);
+router.get('/subjects', authorize(...staffReadRoles), QuestionController.listSubjects);
 router.post('/bulk-delete', authorize(...contentRoles), QuestionController.bulkDeleteQuestions);
-router.get('/:id', QuestionController.getQuestionById);
+router.get('/:id', authorize(...staffReadRoles), QuestionController.getQuestionById);
 router.post('/', authorize(...contentRoles), QuestionController.createQuestion);
 router.put('/:id', authorize(...contentRoles), QuestionController.updateQuestion);
 router.delete('/:id', authorize(...contentRoles), QuestionController.deleteQuestion);

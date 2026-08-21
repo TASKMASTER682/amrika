@@ -24,7 +24,7 @@ export const register = async (req, res, next) => {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
     }
 
@@ -64,7 +64,7 @@ export const login = async (req, res, next) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
     res.json({
@@ -79,37 +79,45 @@ export const login = async (req, res, next) => {
   }
 };
 
-export const logout = async (req, res) => {
-  res.clearCookie('refreshToken', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-  });
-  res.json({
-    success: true,
-    message: 'User logged out successfully.',
-  });
+export const logout = async (req, res, next) => {
+  try {
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    });
+    res.json({
+      success: true,
+      message: 'User logged out successfully.',
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
-export const getMe = async (req, res) => {
-  const user = await req.user.populate(['primaryAgency', 'primaryExam', 'agencies', 'exams']);
-  res.json({
-    success: true,
-    data: {
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        primaryAgency: user.primaryAgency,
-        primaryExam: user.primaryExam,
-        agencies: user.agencies,
-        exams: user.exams,
-        referralCode: user.referralCode,
-        subscription: user.subscription,
+export const getMe = async (req, res, next) => {
+  try {
+    const user = await req.user.populate(['primaryAgency', 'primaryExam', 'agencies', 'exams']);
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          primaryAgency: user.primaryAgency,
+          primaryExam: user.primaryExam,
+          agencies: user.agencies,
+          exams: user.exams,
+          referralCode: user.referralCode,
+          subscription: user.subscription,
+        },
       },
-    },
-  });
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const updatePreferences = async (req, res, next) => {
@@ -147,7 +155,7 @@ export const otpLogin = async (req, res, next) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
     res.json({
@@ -195,7 +203,7 @@ export const refresh = async (req, res, next) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
     res.json({
@@ -242,7 +250,7 @@ export const verifyEmail = async (req, res, next) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
     res.json({
@@ -297,7 +305,7 @@ export const googleCallback = async (req, res, next) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
     const redirectUrl = new URL(CLIENT_URL);

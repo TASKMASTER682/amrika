@@ -7,6 +7,11 @@ const logAction = async (req, action, details) => {
   await logAudit({ userId: req.user._id, action, details, req });
 };
 
+const ALL_ROLES = ['User', 'Content Manager', 'Support', 'Super Admin'];
+const STAFF_ROLES = ['Super Admin', 'Content Manager', 'Support'];
+
+const escapeRegex = (s = '') => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export const listAttempts = async (req, res, next) => {
   try {
     const { status, q } = req.query;
@@ -15,9 +20,10 @@ export const listAttempts = async (req, res, next) => {
 
     const studentFilter = {};
     if (q) {
+      const safeQ = escapeRegex(q);
       studentFilter.$or = [
-        { name: { $regex: q, $options: 'i' } },
-        { email: { $regex: q, $options: 'i' } },
+        { name: { $regex: safeQ, $options: 'i' } },
+        { email: { $regex: safeQ, $options: 'i' } },
       ];
     }
 
@@ -54,20 +60,59 @@ export const getAttemptDetail = async (req, res, next) => {
 
 export const listUsers = async (req, res, next) => {
   try {
-    const { q, role } = req.query;
+    const { q, role, page, limit } = req.query;
     const filter = {};
-    if (role) filter.role = role;
+    if (role && ALL_ROLES.includes(role)) filter.role = role;
     if (q) {
       filter.$or = [
-        { name: { $regex: q, $options: 'i' } },
-        { email: { $regex: q, $options: 'i' } },
+        { name: { $regex: escapeRegex(q), $options: 'i' } },
+        { email: { $regex: escapeRegex(q), $options: 'i' } },
       ];
     }
-    const users = await User.find(filter)
-      .select('-password')
-      .sort({ createdAt: -1 })
-      .limit(200);
-    res.json({ success: true, data: users });
+    const lim = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const pg = Math.max(parseInt(page, 10) || 1, 1);
+    const [users, total] = await Promise.all([
+      User.find(filter)
+        .select('-password')
+        .sort({ createdAt: -1 })
+        .skip((pg - 1) * lim)
+        .limit(lim),
+      User.countDocuments(filter),
+    ]);
+    res.json({ success: true, data: users, total, page: pg, pages: Math.ceil(total / lim) || 1 });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getUserStats = async (req, res, next) => {
+  try {
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const [byRole, suspended, premium, newLast7Days] = await Promise.all([
+      User.aggregate([{ $group: { _id: '$role', count: { $sum: 1 } } }]),
+      User.countDocuments({ active: false }),
+      User.countDocuments({ 'subscription.status': 'active' }),
+      User.countDocuments({ createdAt: { $gte: weekAgo } }),
+    ]);
+    const roleMap = {};
+    let total = 0;
+    for (const r of byRole) {
+      roleMap[r._id || 'User'] = r.count;
+      total += r.count;
+    }
+    const staff = STAFF_ROLES.reduce((sum, r) => sum + (roleMap[r] || 0), 0);
+    res.json({
+      success: true,
+      data: {
+        total,
+        staff,
+        candidates: roleMap['User'] || 0,
+        suspended,
+        premium,
+        newLast7Days,
+        byRole: roleMap,
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -78,28 +123,62 @@ export const updateUser = async (req, res, next) => {
     const { active, role } = req.body;
     const target = await User.findById(req.params.id);
     if (!target) return res.status(404).json({ success: false, message: 'User not found.' });
-    if (target.role === 'Super Admin' && req.user._id.toString() !== target._id.toString() && role !== 'Super Admin') {
-      return res.status(400).json({ success: false, message: 'Cannot demote another Super Admin.' });
+
+    const isSelf = req.user._id.toString() === target._id.toString();
+    const targetIsSuper = target.role === 'Super Admin';
+
+    // Role change guards
+    if (role !== undefined && role !== target.role) {
+      if (!ALL_ROLES.includes(role)) {
+        return res.status(400).json({ success: false, message: 'Invalid role.' });
+      }
+      if (isSelf) {
+        return res.status(400).json({ success: false, message: 'You cannot change your own role. Ask another Super Admin.' });
+      }
+      if (targetIsSuper) {
+        return res.status(400).json({ success: false, message: 'Cannot change the role of another Super Admin.' });
+      }
+    }
+
+    // Suspension guards
+    if (active !== undefined && !!active !== !!target.active) {
+      if (isSelf) {
+        return res.status(400).json({ success: false, message: 'You cannot suspend your own account.' });
+      }
+      if (targetIsSuper) {
+        return res.status(400).json({ success: false, message: 'Cannot suspend another Super Admin.' });
+      }
     }
 
     if (active !== undefined) {
       target.active = !!active;
       await logAction(req, 'USER_STATUS_CHANGE', `Set ${target.email} active=${target.active}`);
     }
-    if (role !== undefined) {
-      // Only Super Admin can assign/change staff roles
-      const allowedRoles = ['Super Admin', 'Content Manager', 'Support', 'User'];
-      if (!allowedRoles.includes(role)) {
-        return res.status(400).json({ success: false, message: 'Invalid role.' });
-      }
-      if (req.user.role !== 'Super Admin') {
-        return res.status(403).json({ success: false, message: 'Only Super Admin can change roles.' });
-      }
+    if (role !== undefined && role !== target.role) {
       target.role = role;
       await logAction(req, 'USER_ROLE_CHANGE', `Set ${target.email} role=${target.role}`);
     }
     await target.save();
     res.json({ success: true, data: target });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteUser = async (req, res, next) => {
+  try {
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ success: false, message: 'User not found.' });
+
+    const isSelf = req.user._id.toString() === target._id.toString();
+    if (isSelf) return res.status(400).json({ success: false, message: 'You cannot delete your own account.' });
+    if (target.role === 'Super Admin') {
+      return res.status(400).json({ success: false, message: 'Cannot delete another Super Admin.' });
+    }
+
+    await target.deleteOne();
+    await logAction(req, 'USER_DELETE', `Deleted user ${target.email}`);
+    res.json({ success: true, message: 'User deleted.' });
   } catch (error) {
     next(error);
   }

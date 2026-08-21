@@ -11,6 +11,9 @@ const contentRoles = ['Super Admin', 'Content Manager'];
 // Staff with a valid token may pass ?all=true to include inactive series.
 router.get('/', optionalProtect, TestSeriesController.listTestSeries);
 router.get('/search', optionalProtect, TestSeriesController.searchTestSeries);
+// Public SEO catalog (must be registered before /:id).
+router.get('/public', optionalProtect, TestSeriesController.listPublicSeries);
+router.get('/public/:slug', optionalProtect, TestSeriesController.getPublicSeries);
 router.get('/:id', optionalProtect, TestSeriesController.getTestSeriesById);
 
 router.use(protect);

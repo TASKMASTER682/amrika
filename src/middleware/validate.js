@@ -58,7 +58,10 @@ export const updateBlogSchema = createBlogSchema.partial();
 export const createTestSeriesSchema = z.object({
   examId: objectId,
   title: z.string().trim().min(1).max(200),
+  slug: z.string().trim().regex(/^[a-zA-Z0-9-]+$/, 'Slug may only contain letters, numbers and hyphens').optional().nullable(),
   description: z.string().max(2000).optional().nullable(),
+  // Admin-authored HTML for the public landing page (sanitized server-side).
+  body: z.string().max(500000).optional().nullable(),
   price: z.number().min(0).max(1000000).optional(),
   banner: z.string().optional().nullable(),
   featured: z.boolean().optional(),
@@ -70,7 +73,9 @@ export const createTestSeriesSchema = z.object({
 export const updateTestSeriesSchema = z.object({
   examId: objectId.optional(),
   title: z.string().trim().min(1).max(200).optional(),
+  slug: z.string().trim().regex(/^[a-zA-Z0-9-]+$/, 'Slug may only contain letters, numbers and hyphens').optional().nullable(),
   description: z.string().max(2000).optional().nullable(),
+  body: z.string().max(500000).optional().nullable(),
   price: z.number().min(0).max(1000000).optional(),
   banner: z.string().optional().nullable(),
   featured: z.boolean().optional(),

@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
+import mongoose from 'mongoose';
 import passport from './config/passport.js';
 import { connectDB } from './config/db.js';
 import { applySecurity } from './middleware/security.js';
@@ -34,6 +35,7 @@ import doubtRoutes from './routes/doubtRoutes.js';
 import studentAnalyticsRoutes from './routes/studentAnalyticsRoutes.js';
 import blogRoutes from './routes/blogRoutes.js';
 import errorLogRoutes from './routes/errorLogRoutes.js';
+import customTestRoutes from './routes/customTestRoutes.js';
 import { startKeepAlive } from './jobs/keepAlive.js';
 import { startUnverifiedUserCleanup } from './jobs/unverifiedUserCleanup.js';
 
@@ -145,6 +147,7 @@ app.use('/api/doubts', doubtRoutes);
 app.use('/api/my-analytics', studentAnalyticsRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/errors', errorLogRoutes);
+app.use('/api/custom-tests', customTestRoutes);
 
 // Test endpoint
 app.get('/health', (req, res) => {
@@ -164,3 +167,30 @@ server.listen(port, () => {
   startKeepAlive();
   startUnverifiedUserCleanup();
 });
+
+// ─── Global error handlers ────────────────────────────────────────────────────
+process.on('unhandledRejection', (err) => {
+  console.error('[unhandledRejection]', err?.message || err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err?.message || err);
+  process.exit(1);
+});
+
+// ─── Graceful shutdown ────────────────────────────────────────────────────────
+const shutdown = async (signal) => {
+  console.log(`\n${signal} received — shutting down gracefully…`);
+  server.close(() => {
+    console.log('HTTP server closed.');
+  });
+  try {
+    io.close();
+    await mongoose.connection.close(false);
+    console.log('MongoDB connection closed.');
+  } catch {}
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

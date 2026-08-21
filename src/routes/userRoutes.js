@@ -1,14 +1,13 @@
 import express from 'express';
-import * as UserController from '../controllers/UserController.js';
-import { protect, authorize } from '../middleware/auth.js';
+import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
-const adminRoles = ['Super Admin'];
 
 router.use(protect);
 
-router.get('/', authorize(...adminRoles), UserController.listUsers);
-router.put('/:id', authorize(...adminRoles), UserController.updateUserRole);
-router.delete('/:id', authorize(...adminRoles), UserController.deleteUser);
+// NOTE: user listing / role updates / deletion live under /api/admin/users
+// (Super Admin only, fully guarded + audit-logged). No per-user admin
+// routes are exposed here on purpose — the old unguarded duplicates
+// (GET /, PUT /:id, DELETE /:id) were removed.
 
 export default router;

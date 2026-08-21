@@ -66,7 +66,9 @@ export const listTests = async (req, res, next) => {
     const tests = await Test.find(filter)
       .populate('examId', 'name')
       .populate('testSeriesId', 'title price')
-      .sort({ createdAt: -1 });
+      // Within a test series, first-uploaded test comes first (latest upload last).
+      // Other listings keep newest-first.
+      .sort(testSeriesId ? { createdAt: 1, _id: 1 } : { createdAt: -1 });
 
     const enriched = [];
     for (const test of tests) {

@@ -26,7 +26,8 @@ export const port = Number(process.env.PORT) || 5000;
 export const accessSecret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
 export const refreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
 export const accessExpiresIn = process.env.JWT_ACCESS_EXPIRES_IN || '15m';
-export const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+// 30-day refresh window keeps users logged in for at least ~20 days of active use.
+export const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '30d';
 
 export const rateLimit = {
   windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,

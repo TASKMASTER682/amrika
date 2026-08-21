@@ -93,9 +93,14 @@ export const updateQuestion = async (req, res, next) => {
   try {
     const { body, options, correctAnswer, type, subject, topic, subtopic, context, statements, matchPairs, subQ, difficulty, language, explanation, source, year, usageStatus, approvalStatus } = req.body;
 
+    const existing = await Question.findById(req.params.id).select('version').lean();
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Question not found.' });
+    }
+
     // Keep track of revision history
     const historyItem = {
-      version: question.version,
+      version: existing.version,
       updatedBy: req.user._id,
       updatedAt: new Date(),
       changes: req.body.changeDescription || 'Details modified',
@@ -120,7 +125,7 @@ export const updateQuestion = async (req, res, next) => {
       ...(year !== undefined && { year: Number(year) }),
       ...(usageStatus !== undefined && { usageStatus: usageStatus || 'unused' }),
       ...(approvalStatus !== undefined && { approvalStatus: approvalStatus || 'Pending' }),
-      version: question.version + 1,
+      version: existing.version + 1,
       $push: { revisionHistory: historyItem },
     };
 

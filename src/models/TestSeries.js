@@ -11,7 +11,16 @@ const testSeriesSchema = new mongoose.Schema({
     required: true,
     trim: true,
   },
+  slug: {
+    type: String,
+    unique: true,
+    sparse: true,
+    lowercase: true,
+    trim: true,
+  },
   description: String,
+  // Admin-authored HTML for the public SEO landing page (sanitized on write/read).
+  body: String,
   price: {
     type: Number,
     default: 0, // 0 means Free
@@ -23,9 +32,10 @@ const testSeriesSchema = new mongoose.Schema({
   },
   publishAt: Date,
   tags: [String],
+  // Draft series stay hidden from users until an admin activates them.
   active: {
     type: Boolean,
-    default: true,
+    default: false,
   },
   difficulty: {
     type: String,
