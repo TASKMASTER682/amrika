@@ -88,7 +88,7 @@ export const getTestSeriesById = async (req, res, next) => {
 
 export const createTestSeries = async (req, res, next) => {
   try {
-    const { title, description, examId, durationDays, price, active, banner, difficulty, body, slug } = req.body;
+    const { title, description, examId, durationDays, price, active, banner, difficulty, body, slug, featured } = req.body;
     const series = await TestSeries.create({
       title: title || '',
       description: description || '',
@@ -97,10 +97,10 @@ export const createTestSeries = async (req, res, next) => {
       examId: examId || null,
       durationDays: durationDays || 0,
       price: price || 0,
-      // New series start as drafts — hidden from users until activated.
       active: active !== undefined ? !!active : false,
       banner: banner || '',
       difficulty: difficulty || 'mix',
+      featured: !!featured,
       author: req.user._id,
     });
     await logAudit({
@@ -117,7 +117,7 @@ export const createTestSeries = async (req, res, next) => {
 
 export const updateTestSeries = async (req, res, next) => {
   try {
-    const { title, description, examId, durationDays, price, active, banner, difficulty, body, slug } = req.body;
+    const { title, description, examId, durationDays, price, active, banner, difficulty, body, slug, featured } = req.body;
     // Slug is only changed when explicitly provided — a stable URL matters for SEO.
     const nextSlug =
       slug !== undefined && slug !== null && slug !== ''
@@ -142,6 +142,7 @@ export const updateTestSeries = async (req, res, next) => {
         active: active !== undefined ? !!active : undefined,
         banner: banner !== undefined ? banner : undefined,
         difficulty: difficulty || undefined,
+        featured: featured !== undefined ? !!featured : undefined,
       },
       { new: true, runValidators: true }
     );

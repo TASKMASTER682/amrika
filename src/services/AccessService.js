@@ -78,6 +78,8 @@ export const canAttemptTest = async (user, test, series) => {
   const s = series || (test.testSeriesId ? await TestSeries.findById(test.testSeriesId) : null);
   if (s && (!s.price || s.price <= 0)) return true;
 
+  if (!user) return false;
+
   if (hasActiveSubscription(user)) {
     if (test.includedInSubscription) return true;
     if (s) {
@@ -86,7 +88,7 @@ export const canAttemptTest = async (user, test, series) => {
     }
   }
 
-  if (s && user) {
+  if (s) {
     const paid = await Order.findOne({ user: user._id, testSeries: s._id, status: 'paid' });
     if (paid) return true;
   }

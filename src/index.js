@@ -36,6 +36,7 @@ import studentAnalyticsRoutes from './routes/studentAnalyticsRoutes.js';
 import blogRoutes from './routes/blogRoutes.js';
 import errorLogRoutes from './routes/errorLogRoutes.js';
 import customTestRoutes from './routes/customTestRoutes.js';
+import searchRoutes from './routes/searchRoutes.js';
 import { startKeepAlive } from './jobs/keepAlive.js';
 import { startUnverifiedUserCleanup } from './jobs/unverifiedUserCleanup.js';
 
@@ -148,6 +149,7 @@ app.use('/api/my-analytics', studentAnalyticsRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/errors', errorLogRoutes);
 app.use('/api/custom-tests', customTestRoutes);
+app.use('/api/search', searchRoutes);
 
 // Test endpoint
 app.get('/health', (req, res) => {
