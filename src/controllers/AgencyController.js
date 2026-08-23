@@ -23,15 +23,22 @@ export const getAgencyById = async (req, res, next) => {
 
 export const createAgency = async (req, res, next) => {
   try {
-    const { name, code, contactEmail, contactPhone, address, description } = req.body;
+    // Schema contract: { name, code, description?, logoUrl?, active? }
+    const { name, code, description, logoUrl, active } = req.body;
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ success: false, code: 'BAD_REQUEST', message: 'Agency name is required.' });
+    }
+    if (!code || !String(code).trim()) {
+      return res.status(400).json({ success: false, code: 'BAD_REQUEST', message: 'Agency code is required.' });
+    }
+
     const agency = await Agency.create({
-      name: name || '',
-      code: code || '',
-      contactEmail: contactEmail || '',
-      contactPhone: contactPhone || '',
-      address: address || '',
-      description: description || '',
-      author: req.user._id,
+      name: String(name).trim(),
+      code: String(code).trim(),
+      ...(description !== undefined ? { description } : {}),
+      ...(logoUrl !== undefined ? { logoUrl } : {}),
+      ...(active !== undefined ? { active } : {}),
     });
     res.status(201).json({ success: true, data: agency });
   } catch (error) {
@@ -41,17 +48,16 @@ export const createAgency = async (req, res, next) => {
 
 export const updateAgency = async (req, res, next) => {
   try {
-    const { name, code, contactEmail, contactPhone, address, description } = req.body;
+    // Only apply the fields the client actually sent — never unset the rest.
+    const allowed = ['name', 'code', 'description', 'logoUrl', 'active'];
+    const updates = {};
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
+
     const agency = await Agency.findByIdAndUpdate(
       req.params.id,
-      {
-        name: name !== undefined ? name : undefined,
-        code: code !== undefined ? code : undefined,
-        contactEmail: contactEmail !== undefined ? contactEmail : undefined,
-        contactPhone: contactPhone !== undefined ? contactPhone : undefined,
-        address: address !== undefined ? address : undefined,
-        description: description !== undefined ? description : undefined,
-      },
+      { $set: updates },
       { new: true, runValidators: true }
     );
     if (!agency) {

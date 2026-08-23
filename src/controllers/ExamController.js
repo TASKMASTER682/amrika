@@ -26,14 +26,25 @@ export const getExamById = async (req, res, next) => {
 
 export const createExam = async (req, res, next) => {
   try {
-    const { title, code, duration, passingMarks, agencyId, negativeMarking } = req.body;
+    // Schema contract: { agencyId, name, code, description?, active? }
+    const { name, code, description, agencyId, active } = req.body;
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ success: false, code: 'BAD_REQUEST', message: 'Exam name is required.' });
+    }
+    if (!code || !String(code).trim()) {
+      return res.status(400).json({ success: false, code: 'BAD_REQUEST', message: 'Exam code is required.' });
+    }
+    if (!agencyId) {
+      return res.status(400).json({ success: false, code: 'BAD_REQUEST', message: 'Agency is required.' });
+    }
+
     const exam = await Exam.create({
-      title: title || '',
-      code: code || '',
-      duration: duration || 0,
-      passingMarks: passingMarks !== undefined ? passingMarks : 0,
-      negativeMarking: negativeMarking !== undefined ? negativeMarking : 0,
-      agencyId: agencyId || null,
+      name: String(name).trim(),
+      code: String(code).trim(),
+      ...(description !== undefined ? { description } : {}),
+      agencyId,
+      ...(active !== undefined ? { active } : {}),
     });
     res.status(201).json({ success: true, data: exam });
   } catch (error) {
@@ -43,17 +54,16 @@ export const createExam = async (req, res, next) => {
 
 export const updateExam = async (req, res, next) => {
   try {
-    const { title, code, duration, passingMarks, agencyId, negativeMarking } = req.body;
+    // Only apply the fields the client actually sent — never unset the rest.
+    const allowed = ['name', 'code', 'description', 'agencyId', 'active'];
+    const updates = {};
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
+
     const exam = await Exam.findByIdAndUpdate(
       req.params.id,
-      {
-        title: title !== undefined ? title : undefined,
-        code: code !== undefined ? code : undefined,
-        duration: duration !== undefined ? duration : undefined,
-        passingMarks: passingMarks !== undefined ? passingMarks : undefined,
-        negativeMarking: negativeMarking !== undefined ? negativeMarking : undefined,
-        agencyId: agencyId !== undefined ? agencyId : undefined,
-      },
+      { $set: updates },
       { new: true, runValidators: true }
     );
     if (!exam) {
