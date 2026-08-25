@@ -78,7 +78,7 @@ export const sendAnnouncementBlast = async ({ title, message, audience, limit = 
 
   const filter = { active: true };
   if (audience === 'admin') {
-    filter.role = { $in: ['Super Admin', 'Content Manager', 'Support', 'Nerpat'] };
+    filter.role = { $in: ['Super Admin', 'Content Manager', 'Support', 'partner'] };
   } else {
     filter.role = 'User';
   }

@@ -7,7 +7,7 @@ const logAction = async (req, action, details) => {
   await logAudit({ userId: req.user._id, action, details, req });
 };
 
-const ALL_ROLES = ['User', 'Content Manager', 'Support', 'Super Admin'];
+const ALL_ROLES = ['User', 'Content Manager', 'Support', 'partner', 'Super Admin'];
 const STAFF_ROLES = ['Super Admin', 'Content Manager', 'Support'];
 
 const escapeRegex = (s = '') => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
