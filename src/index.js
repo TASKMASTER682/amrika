@@ -38,6 +38,8 @@ import errorLogRoutes from './routes/errorLogRoutes.js';
 import customTestRoutes from './routes/customTestRoutes.js';
 import searchRoutes from './routes/searchRoutes.js';
 import mobileRoutes from './routes/mobileRoutes.js';
+import partnerRoutes from './routes/partnerRoutes.js';
+import adminPartnerRoutes from './routes/adminPartnerRoutes.js';
 import { startKeepAlive } from './jobs/keepAlive.js';
 import { startUnverifiedUserCleanup } from './jobs/unverifiedUserCleanup.js';
 
@@ -68,6 +70,9 @@ import './models/DoubtReply.js';
 import './models/Blog.js';
 import './models/ErrorLog.js';
 import './models/AnalyticsEvent.js';
+import './models/Partner.js';
+import './models/PartnerTestSeries.js';
+import './models/PartnerMessage.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -152,6 +157,8 @@ app.use('/api/errors', errorLogRoutes);
 app.use('/api/custom-tests', customTestRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/mobile', mobileRoutes);
+app.use('/api/partner', partnerRoutes);
+app.use('/api/admin/partner', adminPartnerRoutes);
 
 // Test endpoint
 app.get('/health', (req, res) => {

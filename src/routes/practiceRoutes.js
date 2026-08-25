@@ -11,6 +11,8 @@ router.use(protect);
 router.get('/subjects', PracticeController.getPracticeSubjects);
 router.get('/generate', PracticeController.generatePracticeSet);
 router.get('/recommendations', PracticeController.getRecommendations);
+router.get('/weak-questions', PracticeController.getWeakQuestions);
+router.get('/slow-questions', PracticeController.getSlowQuestions);
 
 // Spaced repetition queues
 router.get('/revision/pending', async (req, res, next) => {

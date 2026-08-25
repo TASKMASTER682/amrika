@@ -24,7 +24,6 @@ export const registerSchema = z.object({
   examId: optionalObjectId.optional(),
   referralCode: z.string().trim().optional().nullable(),
   signupSource: z.string().trim().max(50).optional(),
-  agencies: z.array(objectId).max(20).optional(),
 }).refine(
   (data) => isAllowedDomain(data.email),
   {

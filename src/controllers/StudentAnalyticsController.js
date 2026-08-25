@@ -12,32 +12,49 @@ export const getMyGamification = async (req, res, next) => {
 };
 
 // Weak areas: topics where the student's accuracy is below 50% across all submitted attempts.
+// Uses MongoDB aggregation pipeline for performance instead of loading all attempts into memory.
 export const getWeakAreas = async (req, res, next) => {
   try {
-    const attempts = await TestAttempt.find({
-      studentId: req.user._id,
-      status: 'Submitted',
-    }).populate('answers.questionId', 'subject topic').lean();
-
-    const topicStats = {};
-    attempts.forEach(a => {
-      (a.answers || []).forEach(ans => {
-        const q = ans.questionId;
-        if (!q) return;
-        if (!topicStats[q.topic]) topicStats[q.topic] = { topic: q.topic, subject: q.subject, total: 0, attempted: 0, correct: 0 };
-        topicStats[q.topic].total++;
-        if (ans.selectedAnswer && ans.selectedAnswer.length > 0) {
-          topicStats[q.topic].attempted++;
-          if (ans.isCorrect) topicStats[q.topic].correct++;
-        }
-      });
-    });
-
-    const weak = Object.values(topicStats)
-      .map(t => ({ ...t, accuracy: t.attempted > 0 ? (t.correct / t.attempted) * 100 : 0 }))
-      .filter(t => t.attempted > 0 && t.accuracy < 50)
-      .sort((a, b) => a.accuracy - b.accuracy)
-      .slice(0, 10);
+    const weak = await TestAttempt.aggregate([
+      { $match: { studentId: req.user._id, status: 'Submitted' } },
+      { $unwind: '$answers' },
+      { $match: { 'answers.selectedAnswer': { $exists: true, $ne: [], $ne: null } } },
+      {
+        $lookup: {
+          from: 'questions',
+          localField: 'answers.questionId',
+          foreignField: '_id',
+          as: 'question',
+        },
+      },
+      { $unwind: { path: '$question', preserveNullAndEmptyArrays: false } },
+      {
+        $group: {
+          _id: '$question.topic',
+          subject: { $first: '$question.subject' },
+          total: { $sum: 1 },
+          correct: { $sum: { $cond: ['$answers.isCorrect', 1, 0] } },
+        },
+      },
+      {
+        $addFields: {
+          accuracy: { $cond: [{ $gt: ['$total', 0] }, { $multiply: [{ $divide: ['$correct', '$total'] }, 100] }, 0] },
+        },
+      },
+      { $match: { accuracy: { $lt: 50 }, total: { $gte: 1 } } },
+      { $sort: { accuracy: 1 } },
+      { $limit: 10 },
+      {
+        $project: {
+          _id: 0,
+          topic: '$_id',
+          subject: 1,
+          total: 1,
+          correct: 1,
+          accuracy: 1,
+        },
+      },
+    ]);
 
     res.json({ success: true, data: weak });
   } catch (error) {
@@ -46,21 +63,29 @@ export const getWeakAreas = async (req, res, next) => {
 };
 
 // Daily stats: today's attempts/questions, streak, avg score.
+// Optimized to avoid loading all attempts into memory.
 export const getDailyStats = async (req, res, next) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const attempts = await TestAttempt.find({
+    // Get today's attempts (only need today's data for daily stats)
+    const todayAttempts = await TestAttempt.find({
       studentId: req.user._id,
       status: 'Submitted',
-    }).populate('testId').sort({ submittedAt: -1 });
+      submittedAt: { $gte: today },
+    }).select('answers.timeSpent submittedAt').lean();
 
-    const todayAttempts = attempts.filter(a => a.submittedAt && new Date(a.submittedAt) >= today);
     const questionsToday = todayAttempts.reduce((s, a) => s + (a.answers?.length || 0), 0);
     const timeSpentToday = todayAttempts.reduce((s, a) => s + (a.answers?.reduce((x, y) => x + (y.timeSpent || 0), 0) || 0), 0);
 
-    // Average score as a percentage of each test's maximum marks (tests vary in max marks).
+    // For avg score and streak, we need all attempts but use lean + minimal fields
+    const attempts = await TestAttempt.find({
+      studentId: req.user._id,
+      status: 'Submitted',
+    }).populate('testId', 'sections').select('score submittedAt testId').lean();
+
+    // Average score as a percentage of each test's maximum marks
     const pctScores = attempts
       .filter(a => a.testId && Array.isArray(a.testId.sections))
       .map(a => {
@@ -75,7 +100,7 @@ export const getDailyStats = async (req, res, next) => {
       ? Math.round(pctScores.reduce((s, v) => s + v, 0) / pctScores.length)
       : 0;
 
-    // Streak: consecutive distinct days with a submitted attempt.
+    // Streak: consecutive distinct days with a submitted attempt
     let streak = 0;
     if (attempts.length > 0) {
       const days = new Set(attempts.map(a => new Date(a.submittedAt || a.createdAt).toDateString()));

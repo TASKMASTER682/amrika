@@ -50,7 +50,7 @@ export const generateRecommendations = async (studentId) => {
         type: 'Topic Practice',
         title: `Improve Accuracy: ${topic}`,
         description: `Your accuracy in ${topic} is below 50%. Focus on fundamentals by launching a targeted practice session.`,
-        action: `/practice?topic=${encodeURIComponent(topic)}&mode=accuracy`,
+        action: `/practice?source=weak&topic=${encodeURIComponent(topic)}`,
       });
     });
   }
@@ -63,7 +63,7 @@ export const generateRecommendations = async (studentId) => {
         type: 'Speed Boost',
         title: `Optimize Timing: ${topic}`,
         description: `You are spending an average of ${Math.round(time)}s per question in ${topic}. Try timed practices to improve pacing.`,
-        action: `/practice?topic=${encodeURIComponent(topic)}&mode=speed`,
+        action: `/practice?source=slow&topic=${encodeURIComponent(topic)}`,
       });
     });
   }

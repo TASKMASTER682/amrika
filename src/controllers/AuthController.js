@@ -6,7 +6,7 @@ import { accessSecret, refreshSecret, CLIENT_URL } from '../config/env.js';
 
 export const register = async (req, res, next) => {
   try {
-    const { name, email, password, agencyId, examId, referralCode, signupSource, agencies } = req.body;
+    const { name, email, password, agencyId, examId, referralCode, signupSource } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -16,7 +16,7 @@ export const register = async (req, res, next) => {
       });
     }
 
-    const data = await AuthService.register(name, email, password, 'User', agencyId, examId, referralCode, signupSource, agencies);
+    const data = await AuthService.register(name, email, password, 'User', agencyId, examId, referralCode, signupSource);
 
     // Only set refresh token cookie if email is already verified (Google OAuth, admin-created)
     if (data.refreshToken) {
@@ -35,6 +35,7 @@ export const register = async (req, res, next) => {
       data: {
         user: data.user,
         token: data.token,
+        refreshToken: data.refreshToken,
       },
       emailVerified: data.emailVerified ?? false,
       message: 'Account created successfully. Please check your email to verify your account.',
@@ -72,6 +73,7 @@ export const login = async (req, res, next) => {
       data: {
         user: data.user,
         token: data.token,
+        refreshToken: data.refreshToken,
       },
     });
   } catch (error) {
@@ -160,7 +162,7 @@ export const otpLogin = async (req, res, next) => {
 
     res.json({
       success: true,
-      data: { user: data.user, token: data.token },
+      data: { user: data.user, token: data.token, refreshToken: data.refreshToken },
     });
   } catch (error) {
     next(error);
@@ -187,15 +189,29 @@ export const myReferral = async (req, res, next) => {
 
 export const refresh = async (req, res, next) => {
   try {
+    let refreshToken;
+
+    // Try cookie first (web clients)
     const cookieHeader = req.headers.cookie || '';
-    const cookies = {};
-    cookieHeader.split(';').forEach((cookie) => {
-      const parts = cookie.split('=');
-      const name = parts[0].trim();
-      const value = parts.slice(1).join('=').trim();
-      if (name) cookies[name] = decodeURIComponent(value);
-    });
-    const refreshToken = cookies.refreshToken;
+    if (cookieHeader) {
+      const cookies = {};
+      cookieHeader.split(';').forEach((cookie) => {
+        const parts = cookie.split('=');
+        const name = parts[0].trim();
+        const value = parts.slice(1).join('=').trim();
+        if (name) cookies[name] = decodeURIComponent(value);
+      });
+      refreshToken = cookies.refreshToken;
+    }
+
+    // Fallback to body (mobile clients)
+    if (!refreshToken && req.body?.refreshToken) {
+      refreshToken = req.body.refreshToken;
+    }
+
+    if (!refreshToken) {
+      return res.status(401).json({ success: false, message: 'Refresh token not provided.' });
+    }
 
     const data = await AuthService.refresh(refreshToken);
 
@@ -211,6 +227,7 @@ export const refresh = async (req, res, next) => {
       data: {
         token: data.token,
         user: data.user,
+        refreshToken: data.refreshToken,
       },
     });
   } catch (error) {

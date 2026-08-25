@@ -1,6 +1,6 @@
 import helmet from 'helmet';
 import cors from 'cors';
-import { CLIENT_URLS } from '../config/env.js';
+import { CLIENT_URLS, env } from '../config/env.js';
 
 // Recursively removes keys starting with '$' or containing '.' to block
 // MongoDB query/projection operator injection ($where, __proto__, etc.).
@@ -34,13 +34,12 @@ export const applySecurity = (app) => {
   app.use(
     cors({
       origin(origin, callback) {
-        // No Origin header (curl, server-to-server, same-origin) → allow.
         if (!origin) return callback(null, true);
         if (CLIENT_URLS.includes(origin)) return callback(null, true);
-        // `false` tells cors to respond 403 without leaking error internals.
+        if (env === 'development' && origin.startsWith('http://localhost:')) return callback(null, true);
         return callback(null, false);
       },
-      credentials: true, // required for the httpOnly refresh-token cookie
+      credentials: true,
     })
   );
   app.use(sanitizeMongo);

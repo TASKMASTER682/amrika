@@ -195,7 +195,7 @@ router.post('/create', async (req, res, next) => {
     const seriesIds = await TestSeries.find({ examId: exam._id })
       .select('_id').lean().then((ss) => ss.map((s) => s._id));
 
-    let questionPoolFilter = { active: true, approvalStatus: 'Approved', subject, difficulty: { $in: ['Easy', 'Medium'] } };
+    let questionPoolFilter = { active: true, approvalStatus: 'Approved', subject };
 
     if (seriesIds.length > 0) {
       const TestModel = mongoose.model('Test');
@@ -215,28 +215,42 @@ router.post('/create', async (req, res, next) => {
       if (questionIds.length > 0) {
         questionPoolFilter._id = { $in: questionIds };
       }
-    } else {
-      // Fallback: try direct examId
-      questionPoolFilter.examId = exam._id;
     }
 
-    // Randomly select Easy + Medium questions
-    const questions = await Question.aggregate([
+    // If no questions found through the TestSeries chain, fall back to the full question bank
+    // This handles cases where questions exist with the subject but aren't linked to any test series
+    let questions = await Question.aggregate([
       { $match: questionPoolFilter },
       { $sample: { size: questionCount } },
       {
         $project: {
           body: 1, options: 1, type: 1, subject: 1, topic: 1,
           difficulty: 1, marks: 1, negativeMarks: 1, imageUrl: 1,
-          language: 1, context: 1, statements: 1, matchPairs: 1,
+          language: 1, context: 1, statements: 1, matchPairs: 1, subQ: 1,
         },
       },
     ]);
 
+    // Fallback: if chain yielded 0 questions, search entire question bank
+    if (questions.length === 0) {
+      const fallbackFilter = { active: true, approvalStatus: 'Approved', subject };
+      questions = await Question.aggregate([
+        { $match: fallbackFilter },
+        { $sample: { size: questionCount } },
+        {
+          $project: {
+            body: 1, options: 1, type: 1, subject: 1, topic: 1,
+            difficulty: 1, marks: 1, negativeMarks: 1, imageUrl: 1,
+            language: 1, context: 1, statements: 1, matchPairs: 1, subQ: 1,
+          },
+        },
+      ]);
+    }
+
     if (questions.length === 0) {
       return res.status(404).json({
         success: false,
-        message: `No Easy/Medium questions found for "${subject}" in ${exam.name}. Try a different subject.`,
+        message: `No questions found for "${subject}" in ${exam.name}. Try a different subject.`,
       });
     }
 

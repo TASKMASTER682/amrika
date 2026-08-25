@@ -37,7 +37,7 @@ const randomOtp = () => {
 // Self-registration ALWAYS creates a regular 'User' — never a staff/privileged role.
 const STAFF_ROLES = ['Super Admin', 'Content Manager', 'Support'];
 
-export const register = async (name, email, password, role, agencyId, examId, referralCode, signupSource, agencies) => {
+export const register = async (name, email, password, role, agencyId, examId, referralCode, signupSource) => {
   // Only allow emails from approved domains (gmail.com, outlook.com, etc.)
   if (!isValidEmailDomain(email)) {
     const error = new Error('This email domain is not allowed. Please use a valid email address (e.g. gmail.com, outlook.com).');
@@ -67,7 +67,6 @@ export const register = async (name, email, password, role, agencyId, examId, re
     role: 'User',
     primaryAgency: agencyId || undefined,
     primaryExam: examId || undefined,
-    agencies: Array.isArray(agencies) ? agencies : [],
     exams: [],
     referralCode: randomCode('REF', 6),
     referredBy: referredBy || undefined,
