@@ -70,7 +70,7 @@ export const canAttemptTest = async (user, test, series) => {
   if (!test) return false;
   if (isWithinFreeWindow(test)) return true;
 
-  const maxTier = user?.role === 'Super Admin' || user?.role === 'Content Manager';
+  const maxTier = user?.role === 'Super Admin' || user?.role === 'Content Manager' || user?.role === 'Nerpat';
   if (maxTier) return true;
 
   if (test.status !== 'published' || test.active === false) return false;
