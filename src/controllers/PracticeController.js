@@ -11,31 +11,7 @@ import * as RecommendationService from '../services/RecommendationService.js';
  */
 export const getPracticeSubjects = async (req, res, next) => {
   try {
-    const enrollments = await Enrollment.find({ userId: req.user._id }).select('testSeriesId').lean();
-    const seriesIds = enrollments.map((e) => e.testSeriesId);
-
-    // If user has enrolled series, return subjects from those only
-    if (seriesIds.length > 0) {
-      const tests = await Test.find({ testSeriesId: { $in: seriesIds } }).select('sections').lean();
-      const questionIds = new Set();
-      for (const t of tests) {
-        for (const section of t.sections || []) {
-          for (const qid of section.questions || []) questionIds.add(String(qid));
-        }
-      }
-      if (questionIds.size === 0) {
-        return res.json({ success: true, data: [] });
-      }
-      const subjects = await Question.distinct('subject', {
-        _id: { $in: [...questionIds] },
-        active: true,
-        approvalStatus: 'Approved',
-        subject: { $ne: '' },
-      });
-      return res.json({ success: true, data: subjects });
-    }
-
-    // Free users (no enrollment): return all subjects from active question bank
+    // Return all subjects from active question bank — no enrollment restriction
     const subjects = await Question.distinct('subject', {
       active: true,
       approvalStatus: 'Approved',
