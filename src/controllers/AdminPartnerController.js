@@ -78,6 +78,27 @@ export const reviewPartner = async (req, res, next) => {
   }
 };
 
+// Update partner revenue share percentage
+export const updateRevenueShare = async (req, res, next) => {
+  try {
+    const { revenueShare } = req.body;
+    if (revenueShare === undefined || typeof revenueShare !== 'number' || revenueShare < 0 || revenueShare > 100) {
+      return res.status(400).json({ success: false, message: 'revenueShare must be a number between 0 and 100.' });
+    }
+    const partner = await Partner.findByIdAndUpdate(
+      req.params.id,
+      { revenueShare },
+      { new: true, runValidators: true }
+    ).populate('user', 'name email');
+    if (!partner) {
+      return res.status(404).json({ success: false, message: 'Partner not found.' });
+    }
+    res.json({ success: true, data: partner });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // List test series visible to admin (pending_review or under_review)
 export const listPartnerTestSeries = async (req, res, next) => {
   try {

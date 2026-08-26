@@ -4,6 +4,7 @@ import {
   listPartners,
   getPartnerDetails,
   reviewPartner,
+  updateRevenueShare,
   listPartnerTestSeries,
   getTestSeriesForReview,
   saveFormattedQuestion,
@@ -27,6 +28,7 @@ router.use(protect);
 router.get('/partners', authorize(...supportRoles), listPartners);
 router.get('/partners/:id', authorize(...supportRoles), getPartnerDetails);
 router.patch('/partners/:id/review', authorize(...adminRoles), reviewPartner);
+router.patch('/partners/:id/revenue-share', authorize(...adminRoles), updateRevenueShare);
 router.get('/partners/:id/earnings', authorize(...adminRoles), getPartnerEarnings);
 
 // Partner test series
