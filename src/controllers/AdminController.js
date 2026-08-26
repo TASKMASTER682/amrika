@@ -1,6 +1,7 @@
 import TestAttempt from '../models/TestAttempt.js';
 import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
+import Partner from '../models/Partner.js';
 import { logAudit } from '../services/AuditService.js';
 
 const logAction = async (req, action, details) => {
@@ -157,6 +158,29 @@ export const updateUser = async (req, res, next) => {
     if (role !== undefined && role !== target.role) {
       target.role = role;
       await logAction(req, 'USER_ROLE_CHANGE', `Set ${target.email} role=${target.role}`);
+
+      // Auto-verify email and ensure active when assigning partner role
+      if (role === 'partner') {
+        target.emailVerified = true;
+        target.active = true;
+        await logAction(req, 'USER_ROLE_CHANGE', `Auto-verified email and activated ${target.email} for partner role`);
+
+        // Create Partner document if it doesn't exist
+        const existingPartner = await Partner.findOne({ user: target._id });
+        if (!existingPartner) {
+          await Partner.create({
+            user: target._id,
+            agencyName: '',
+            contactEmail: target.email,
+            contactPhone: '',
+            examName: '',
+            description: '',
+            sampleQuestions: '',
+            status: 'pending',
+          });
+          await logAction(req, 'PARTNER_CREATED', `Created Partner profile for ${target.email} via admin role change`);
+        }
+      }
     }
     await target.save();
     res.json({ success: true, data: target });

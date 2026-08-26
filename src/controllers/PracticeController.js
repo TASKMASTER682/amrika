@@ -1,17 +1,58 @@
 import Question from '../models/Question.js';
 import Test from '../models/Test.js';
+import TestSeries from '../models/TestSeries.js';
 import TestAttempt from '../models/TestAttempt.js';
 import Enrollment from '../models/Enrollment.js';
 import * as RecommendationService from '../services/RecommendationService.js';
 
 /**
- * Subjects available for the Infinite Practice module — restricted to the
- * questions belonging to the user's ENROLLED test series. Unenrolled users get
- * an empty list (they should enroll in a series first).
+ * Collect all question IDs from the question bank for a set of exam IDs.
+ * Chain: Exam → TestSeries → Test → sections.questions → Question IDs
+ */
+async function collectQuestionIdsForExams(examIds) {
+  const seriesIds = await TestSeries.find({ examId: { $in: examIds } })
+    .select('_id').lean().then((ss) => ss.map((s) => s._id));
+
+  if (seriesIds.length === 0) return new Set();
+
+  const tests = await Test.find({ testSeriesId: { $in: seriesIds } })
+    .select('sections').lean();
+
+  const qids = new Set();
+  for (const t of tests) {
+    for (const sec of t.sections || []) {
+      for (const q of sec.questions || []) qids.add(String(q));
+    }
+  }
+  return qids;
+}
+
+/**
+ * Subjects available for the Infinite Practice module — derived from the
+ * user's exam preferences (profile → exams). We follow the chain:
+ * Exam → TestSeries → Test → sections.questions → Question → subject
+ * If the user has no exam preferences yet, we fall back to all subjects
+ * from the active question bank.
  */
 export const getPracticeSubjects = async (req, res, next) => {
   try {
-    // Return all subjects from active question bank — no enrollment restriction
+    const userExams = req.user.exams || [];
+
+    if (userExams.length > 0) {
+      const qids = await collectQuestionIdsForExams(userExams);
+      if (qids.size === 0) {
+        return res.json({ success: true, data: [] });
+      }
+      const subjects = await Question.distinct('subject', {
+        _id: { $in: [...qids] },
+        active: true,
+        approvalStatus: 'Approved',
+        subject: { $ne: '' },
+      });
+      return res.json({ success: true, data: subjects });
+    }
+
+    // No exam preferences → return all subjects from active question bank
     const subjects = await Question.distinct('subject', {
       active: true,
       approvalStatus: 'Approved',
@@ -53,10 +94,19 @@ export const generatePracticeSet = async (req, res, next) => {
     // Free users (no subscription, no enrolled series) are capped at 5 questions
     const limit = (!hasActiveSub && !hasEnrollments) ? Math.min(Number(rawLimit), 5) : Number(rawLimit);
 
-    // Build the question pool: enrolled series questions for paid users, full bank for free users
+    // Build the question pool: exam-preference-based for users with preferences,
+    // enrolled series for users with enrollments, full bank as final fallback
     let filter = { active: true, approvalStatus: 'Approved' };
 
-    if (hasEnrollments) {
+    const userExams = req.user.exams || [];
+    if (userExams.length > 0) {
+      // Primary: questions from user's preferred exams (via TestSeries → Test chain)
+      const qids = await collectQuestionIdsForExams(userExams);
+      if (qids.size > 0) {
+        filter._id = { $in: [...qids] };
+      }
+    } else if (hasEnrollments) {
+      // Fallback: enrolled test series questions
       const seriesIds = enrollments.map((e) => e.testSeriesId);
       const tests = await Test.find({ testSeriesId: { $in: seriesIds } }).select('sections').lean();
       const enrolledQuestionIds = new Set();
@@ -69,7 +119,7 @@ export const generatePracticeSet = async (req, res, next) => {
         filter._id = { $in: [...enrolledQuestionIds] };
       }
     }
-    // Free users: no _id filter → samples from entire active question bank
+    // Final fallback: no exam preferences, no enrollments → samples from entire active question bank
     if (subject) filter.subject = subject;
     if (topic) filter.topic = topic;
     if (difficulty) filter.difficulty = difficulty;

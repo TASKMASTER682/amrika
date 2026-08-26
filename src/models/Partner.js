@@ -10,12 +10,10 @@ const partnerSchema = new mongoose.Schema(
     },
     agencyName: {
       type: String,
-      required: true,
       trim: true,
     },
     contactEmail: {
       type: String,
-      required: true,
       trim: true,
       lowercase: true,
     },
@@ -25,7 +23,6 @@ const partnerSchema = new mongoose.Schema(
     },
     examName: {
       type: String,
-      required: true,
       trim: true,
     },
     description: {
