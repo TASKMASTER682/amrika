@@ -69,6 +69,11 @@ const userSchema = new mongoose.Schema({
     expiresAt: Date,
     status: { type: String, enum: ['none', 'active', 'expired'], default: 'none' },
   },
+  preferredLanguage: {
+    type: String,
+    enum: ['en', 'hi', 'ur', 'hinglish'],
+    default: 'en',
+  },
   // Gamification
   xp: { type: Number, default: 0 },
   level: { type: Number, default: 1 },

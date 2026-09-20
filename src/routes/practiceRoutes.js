@@ -14,6 +14,9 @@ router.get('/recommendations', PracticeController.getRecommendations);
 router.get('/weak-questions', PracticeController.getWeakQuestions);
 router.get('/slow-questions', PracticeController.getSlowQuestions);
 
+// Practice session logging
+router.post('/log', PracticeController.logPracticeSession);
+
 // Spaced repetition queues
 router.get('/revision/pending', async (req, res, next) => {
   try {

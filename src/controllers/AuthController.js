@@ -112,6 +112,7 @@ export const getMe = async (req, res, next) => {
           primaryExam: user.primaryExam,
           agencies: user.agencies,
           exams: user.exams,
+          preferredLanguage: user.preferredLanguage || 'en',
           referralCode: user.referralCode,
           subscription: user.subscription,
         },
@@ -124,12 +125,26 @@ export const getMe = async (req, res, next) => {
 
 export const updatePreferences = async (req, res, next) => {
   try {
-    const { agencies, exams } = req.body;
+    const { agencies, exams, preferredLanguage } = req.body;
     const user = req.user;
     if (Array.isArray(agencies)) user.agencies = agencies;
     if (Array.isArray(exams)) user.exams = exams;
+    if (preferredLanguage) user.preferredLanguage = preferredLanguage;
     await user.save();
-    res.json({ success: true, data: { user: { id: user._id, name: user.name, email: user.email, role: user.role, agencies: user.agencies, exams: user.exams } } });
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          agencies: user.agencies,
+          exams: user.exams,
+          preferredLanguage: user.preferredLanguage || 'en',
+        },
+      },
+    });
   } catch (error) {
     next(error);
   }

@@ -2,6 +2,7 @@ import TestAttempt from '../models/TestAttempt.js';
 import Test from '../models/Test.js';
 import TestSeries from '../models/TestSeries.js';
 import Enrollment from '../models/Enrollment.js';
+import User from '../models/User.js';
 
 export const getTestLeaderboard = async (req, res, next) => {
   try {
@@ -227,6 +228,65 @@ export const getMySeriesLeaderboards = async (req, res, next) => {
     );
 
     res.json({ success: true, data: data.filter(Boolean) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getXPLeaderboard = async (req, res, next) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const skip = (page - 1) * limit;
+
+    // Global XP leaderboard (all users with xp > 0)
+    const [entries, total] = await Promise.all([
+      User.find({ xp: { $gt: 0 } })
+        .select('name xp level')
+        .sort({ xp: -1, level: -1, updatedAt: 1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      User.countDocuments({ xp: { $gt: 0 } }),
+    ]);
+
+    const formattedEntries = entries.map((u, i) => ({
+      rank: skip + i + 1,
+      studentId: u._id,
+      studentName: u.name,
+      isMe: String(u._id) === String(req.user._id),
+      xp: u.xp,
+      level: u.level,
+    }));
+
+    // Current user's position
+    let myEntry = null;
+    const myXp = req.user.xp || 0;
+    if (myXp > 0) {
+      const betterCount = await User.countDocuments({ xp: { $gt: myXp } });
+      const sameXpEarlier = await User.countDocuments({ xp: myXp, updatedAt: { $lt: req.user.updatedAt } });
+      myEntry = {
+        rank: betterCount + sameXpEarlier + 1,
+        xp: myXp,
+        level: req.user.level || 1,
+      };
+    }
+
+    res.json({
+      success: true,
+      data: {
+        entries: formattedEntries,
+        myEntry,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page < Math.ceil(total / limit),
+          hasPrev: page > 1,
+        },
+      },
+    });
   } catch (error) {
     next(error);
   }

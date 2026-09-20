@@ -139,7 +139,7 @@ export const globalSearch = async (req, res, next) => {
     ];
 
     const settled = await Promise.allSettled(
-      entities.map((entity) => entity.search({ query, re, agencyIds, matchedExamIds }))
+      entities.map((entity) => entity.search({ query, re, agencyIds, examIds: matchedExamIds }))
     );
 
     const groups = [];

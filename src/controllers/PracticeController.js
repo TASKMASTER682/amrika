@@ -2,6 +2,7 @@ import Question from '../models/Question.js';
 import Test from '../models/Test.js';
 import TestSeries from '../models/TestSeries.js';
 import TestAttempt from '../models/TestAttempt.js';
+import PracticeSession from '../models/PracticeSession.js';
 import Enrollment from '../models/Enrollment.js';
 import * as RecommendationService from '../services/RecommendationService.js';
 
@@ -322,6 +323,37 @@ export const getSlowQuestions = async (req, res, next) => {
 
     const questions = await TestAttempt.aggregate(pipeline);
     res.json({ success: true, data: questions });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Log a practice session so it counts toward daily stats / dashboard XP.
+ * Body: { source, subject, topic, totalQuestions, answered, correct, timeSpentSeconds, answers[] }
+ */
+export const logPracticeSession = async (req, res, next) => {
+  try {
+    const { source, subject, topic, totalQuestions, answered, correct, timeSpentSeconds, answers } = req.body;
+
+    if (!totalQuestions || totalQuestions < 1) {
+      return res.status(400).json({ success: false, message: 'totalQuestions is required' });
+    }
+
+    const session = await PracticeSession.create({
+      studentId: req.user._id,
+      source: source || 'general',
+      subject: subject || '',
+      topic: topic || '',
+      totalQuestions,
+      answered: answered || 0,
+      correct: correct || 0,
+      timeSpentSeconds: timeSpentSeconds || 0,
+      answers: Array.isArray(answers) ? answers : [],
+      completedAt: new Date(),
+    });
+
+    res.json({ success: true, data: { id: session._id } });
   } catch (error) {
     next(error);
   }

@@ -1,4 +1,5 @@
 import TestAttempt from '../models/TestAttempt.js';
+import PracticeSession from '../models/PracticeSession.js';
 import Question from '../models/Question.js';
 import { getGamification } from '../services/GamificationService.js';
 
@@ -63,21 +64,34 @@ export const getWeakAreas = async (req, res, next) => {
 };
 
 // Daily stats: today's attempts/questions, streak, avg score.
-// Optimized to avoid loading all attempts into memory.
+// Now also includes practice sessions (weak topics, create test, etc.)
 export const getDailyStats = async (req, res, next) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Get today's attempts (only need today's data for daily stats)
+    // Get today's submitted attempts
     const todayAttempts = await TestAttempt.find({
       studentId: req.user._id,
       status: 'Submitted',
       submittedAt: { $gte: today },
     }).select('answers.timeSpent submittedAt').lean();
 
-    const questionsToday = todayAttempts.reduce((s, a) => s + (a.answers?.length || 0), 0);
-    const timeSpentToday = todayAttempts.reduce((s, a) => s + (a.answers?.reduce((x, y) => x + (y.timeSpent || 0), 0) || 0), 0);
+    const testQuestionsToday = todayAttempts.reduce((s, a) => s + (a.answers?.length || 0), 0);
+    const testTimeToday = todayAttempts.reduce((s, a) => s + (a.answers?.reduce((x, y) => x + (y.timeSpent || 0), 0) || 0), 0);
+
+    // Get today's practice sessions
+    const todayPractice = await PracticeSession.find({
+      studentId: req.user._id,
+      completedAt: { $gte: today },
+    }).select('answered correct timeSpentSeconds completedAt').lean();
+
+    const practiceQuestionsToday = todayPractice.reduce((s, p) => s + (p.answered || 0), 0);
+    const practiceTimeToday = todayPractice.reduce((s, p) => s + (p.timeSpentSeconds || 0), 0);
+
+    // Combined daily stats
+    const questionsToday = testQuestionsToday + practiceQuestionsToday;
+    const timeSpentToday = testTimeToday + practiceTimeToday;
 
     // For avg score and streak, we need all attempts but use lean + minimal fields
     const attempts = await TestAttempt.find({
@@ -100,10 +114,13 @@ export const getDailyStats = async (req, res, next) => {
       ? Math.round(pctScores.reduce((s, v) => s + v, 0) / pctScores.length)
       : 0;
 
-    // Streak: consecutive distinct days with a submitted attempt
+    // Streak: consecutive distinct days with a submitted attempt OR practice session
     let streak = 0;
-    if (attempts.length > 0) {
-      const days = new Set(attempts.map(a => new Date(a.submittedAt || a.createdAt).toDateString()));
+    if (attempts.length > 0 || todayPractice.length > 0) {
+      const days = new Set([
+        ...attempts.map(a => new Date(a.submittedAt || a.createdAt).toDateString()),
+        ...todayPractice.map(p => new Date(p.completedAt || p.createdAt).toDateString()),
+      ]);
       const cursor = new Date();
       cursor.setHours(0, 0, 0, 0);
       while (days.has(cursor.toDateString())) {

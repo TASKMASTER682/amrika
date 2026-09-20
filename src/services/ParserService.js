@@ -353,9 +353,12 @@ export const parseStructuredText = (rawText, userId, filename = 'paste') => {
       type = typeOverride;
     } else {
       // Auto-infer
+      const hasARLabels = /Assert(?:ion)?[\s]*[\(]?\s*A\s*[\)]?[\s:]*|Reason[\s:]+/i.test(body);
       if (matchPairs.length > 0) {
         type = 'Match the Following';
-      } else if (statements.length > 0 && /assertion|reason/i.test(qText + subQ)) {
+      } else if (statements.length > 0 && (/assertion|reason/i.test(qText + subQ) || hasARLabels)) {
+        type = 'Assertion Reason';
+      } else if (hasARLabels && statements.length === 0) {
         type = 'Assertion Reason';
       } else if (correctAnswer.length > 1) {
         type = 'Multiple Correct';

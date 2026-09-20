@@ -83,6 +83,8 @@ export const updateTestSeriesSchema = z.object({
   active: z.boolean().optional(),
 });
 
+export {};
+
 /**
  * Wraps a Zod schema into Express middleware. The parsed (and coerced/defaulted)
  * result replaces req[source] so controllers always work with clean data.

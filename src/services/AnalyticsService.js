@@ -76,17 +76,24 @@ export const calculateAttemptAnalytics = async (attemptId) => {
 
       if (isCorrect) {
         correctCount++;
-        marksObtained = section ? section.marksPerQuestion : question.marks;
+        marksObtained = section ? section.marksPerQuestion : (question.marks || 1);
       } else {
         wrongCount++;
-        marksObtained = section && section.negativeMarking ? -section.negativeMarksPerQuestion : -question.negativeMarks;
+        const positiveMarks = section ? section.marksPerQuestion : (question.marks || 1);
+        if (section && section.negativeMarking) {
+          marksObtained = -section.negativeMarksPerQuestion;
+        } else if (question.negativeMarks > 0) {
+          marksObtained = -question.negativeMarks;
+        } else {
+          marksObtained = -(positiveMarks * 0.25);
+        }
       }
     }
 
     totalScore += marksObtained;
 
     // Update Section Statistics
-    if (sectionStats[sectionName]) {
+    if (section && sectionStats[sectionName]) {
       const stats = sectionStats[sectionName];
       stats.timeSpent += ans.timeSpent;
       if (isAttempted) {
@@ -96,7 +103,13 @@ export const calculateAttemptAnalytics = async (attemptId) => {
           stats.score += section.marksPerQuestion;
         } else {
           stats.wrong++;
-          stats.score -= section.negativeMarking ? section.negativeMarksPerQuestion : 0;
+          if (section.negativeMarking) {
+            stats.score -= section.negativeMarksPerQuestion;
+          } else if (question.negativeMarks > 0) {
+            stats.score -= question.negativeMarks;
+          } else {
+            stats.score -= section.marksPerQuestion * 0.25;
+          }
         }
       }
     }

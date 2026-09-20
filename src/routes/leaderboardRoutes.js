@@ -9,5 +9,6 @@ router.use(protect);
 router.get('/my-series', LeaderboardController.getMySeriesLeaderboards);
 router.get('/test/:testId', LeaderboardController.getTestLeaderboard);
 router.get('/series/:testSeriesId', LeaderboardController.getTestSeriesLeaderboard);
+router.get('/xp', LeaderboardController.getXPLeaderboard);
 
 export default router;

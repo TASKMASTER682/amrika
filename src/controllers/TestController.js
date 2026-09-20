@@ -6,13 +6,15 @@ import { canAttemptTest, getTestAvailability, isWithinFreeWindow } from '../serv
 // `questions` (ObjectId string refs) and `questionIds` (frontend builder naming).
 const normalizeSection = (sec) => {
   const rawQuestions = sec.questions || sec.questionIds || [];
+  const marks = Number(sec.marksPerQuestion);
+  const negMarks = Number(sec.negativeMarksPerQuestion);
   return {
     name: sec.name || 'Section',
     duration: Number(sec.duration) || 0,
     questions: (Array.isArray(rawQuestions) ? rawQuestions : []).filter(Boolean),
     negativeMarking: sec.negativeMarking !== undefined ? !!sec.negativeMarking : true,
-    marksPerQuestion: Number(sec.marksPerQuestion) || 2,
-    negativeMarksPerQuestion: Number(sec.negativeMarksPerQuestion) || 0.5,
+    marksPerQuestion: !isNaN(marks) && marks >= 0 ? marks : 2,
+    negativeMarksPerQuestion: !isNaN(negMarks) && negMarks >= 0 ? negMarks : 0.5,
   };
 };
 

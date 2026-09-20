@@ -276,6 +276,7 @@ router.post('/create', async (req, res, next) => {
           context: q.context || null,
           statements: q.statements || [],
           matchPairs: q.matchPairs || [],
+          subQ: q.subQ || null,
         })),
         totalQuestions: questions.length,
         timeMinutes: time,
@@ -292,19 +293,19 @@ router.post('/submit', async (req, res, next) => {
   try {
     const { examId, subject, timeMinutes, timeTakenSeconds, answers } = req.body;
 
-    if (!examId || !subject || !Array.isArray(answers) || answers.length === 0) {
+    if (!examId || !subject || !Array.isArray(answers)) {
       return res.status(400).json({ success: false, message: 'Invalid submission data.' });
     }
 
     const questionIds = answers.map((a) => a.questionId).filter(Boolean);
-    if (questionIds.length === 0) {
-      return res.status(400).json({ success: false, message: 'No answers provided.' });
-    }
 
     // Fetch questions from DB to verify correct answers
-    const questions = await Question.find({ _id: { $in: questionIds } })
-      .select('correctAnswer marks negativeMarks')
-      .lean();
+    const mongoose = await import('mongoose').then(m => m.default || m);
+    const validQuestionIds = questionIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
+
+    const questions = validQuestionIds.length > 0
+      ? await Question.find({ _id: { $in: validQuestionIds } }).select('correctAnswer marks negativeMarks').lean()
+      : [];
 
     const questionMap = {};
     for (const q of questions) {
@@ -318,13 +319,23 @@ router.post('/submit', async (req, res, next) => {
     let maxMarks = 0;
 
     const results = answers.map((a) => {
-      const q = questionMap[a.questionId];
-      if (!q) return { questionId: a.questionId, status: 'unattempted', marks: 0 };
+      // Prefer DB question; fallback to submitted correctAnswer / marks
+      let q = questionMap[a.questionId];
+      let correctAns = q ? (q.correctAnswer || []) : (Array.isArray(a.correctAnswer) ? a.correctAnswer : (a.correctAnswer ? [a.correctAnswer] : []));
+      let marks = q ? (q.marks || 1) : (Number(a.marks) || 1);
+      let neg = q ? (q.negativeMarks || 0) : (Number(a.negativeMarks) || 0);
+
+      // If DB still missing (AI temp), build pseudo-map from answer payload
+      if (!q) {
+        q = {
+          _id: { toString: () => a.questionId },
+          correctAnswer: correctAns,
+          marks,
+          negativeMarks: neg,
+        };
+      }
 
       const selected = Array.isArray(a.selectedAnswer) ? a.selectedAnswer : [];
-      const correctAns = q.correctAnswer || [];
-      const marks = q.marks || 1;
-      const neg = q.negativeMarks || 0;
       maxMarks += marks;
 
       if (selected.length === 0) {
@@ -352,6 +363,16 @@ router.post('/submit', async (req, res, next) => {
     const timeTaken = parseInt(timeTakenSeconds, 10) || 0;
     const accuracy = correct + incorrect > 0 ? Math.round((correct / (correct + incorrect)) * 100) : 0;
     const percentage = maxMarks > 0 ? Math.round((totalMarks / maxMarks) * 100) : 0;
+
+    // Clean up temporary AI/staging questions after user sees result (temp DB lifetime)
+    try {
+      const { default: Question } = await import('../models/Question.js');
+      if (Question && Question.deleteMany) {
+        await Question.deleteMany({ source: 'ai-generated', createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } });
+      }
+    } catch (cleanupErr) {
+      console.warn('[DB cleanup] Temporary AI question cleanup skipped:', cleanupErr?.message);
+    }
 
     res.json({
       success: true,

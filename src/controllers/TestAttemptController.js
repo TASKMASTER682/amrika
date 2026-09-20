@@ -1,6 +1,5 @@
 import TestAttempt from '../models/TestAttempt.js';
 import Test from '../models/Test.js';
-import Question from '../models/Question.js';
 import { calculateAttemptAnalytics, getAdvancedAnalytics } from '../services/AnalyticsService.js';
 import { queueFailedQuestions } from '../services/RevisionService.js';
 import { canAttemptTest, getTestAvailability } from '../services/AccessService.js';
@@ -86,11 +85,17 @@ export const startTest = async (req, res, next) => {
       });
     }
 
+    // Only count SUBMITTED attempts toward the limit.
+    // Stale "In Progress" attempts (from browser crashes / abandoned sessions)
+    // must NOT consume the limit — they are cleaned up below.
     const previousAttemptsCount = await TestAttempt.countDocuments({
       studentId,
       testId,
       status: 'Submitted'
     });
+
+    console.log('[TestAttempt] Checking attempt limit:', { testId, studentId, testAttemptLimit: test.attemptLimit });
+    console.log('[TestAttempt] Previous attempts count:', previousAttemptsCount);
 
     if (test.attemptLimit > 0 && previousAttemptsCount >= test.attemptLimit) {
       return res.status(400).json({
@@ -108,17 +113,40 @@ export const startTest = async (req, res, next) => {
     }).populate('answers.questionId');
 
     if (existingInProgress) {
-      // Never resume with more time than the server clock allows.
+      // Check if the existing attempt has expired (time ran out but was never submitted).
+      // This happens when the user closes the browser / loses connection and the auto-submit
+      // fails. Without this check the user would be stuck in a zombie session forever.
       const authRemaining = getAuthoritativeRemaining(existingInProgress, test);
-      if (authRemaining !== null) existingInProgress.remainingSeconds = authRemaining;
-      // Refresh the per-section windows from the server clock as well.
-      const authSectionTimes = getAuthoritativeSectionTimes(existingInProgress, test);
-      if (authSectionTimes.length > 0) existingInProgress.sectionTimeLeft = authSectionTimes;
-      return res.json({
-        success: true,
-        message: 'Resuming active session.',
-        data: existingInProgress,
-      });
+      if (authRemaining !== null && authRemaining <= 0) {
+        // Auto-submit the expired attempt so it leaves the "In Progress" limbo.
+        const expiredId = existingInProgress._id.toString();
+        try {
+          // Re-fetch a clean document (no populate) to avoid Mongoose version conflicts.
+          const fresh = await TestAttempt.findById(expiredId);
+          if (fresh && fresh.status === 'In Progress') {
+            await calculateAttemptAnalytics(expiredId);
+            await queueFailedQuestions(fresh.studentId, fresh.answers);
+          }
+        } catch (autoErr) {
+          console.warn('[startTest] Auto-submit of expired attempt failed:', autoErr.message);
+          // If auto-submit fails, force-mark it submitted via findOneAndUpdate (bypasses version check).
+          await TestAttempt.findOneAndUpdate(
+            { _id: expiredId, status: 'In Progress' },
+            { $set: { status: 'Submitted', submittedAt: new Date(), score: 0 } },
+          );
+        }
+        // Fall through — do NOT return the expired attempt; continue to create a fresh one below.
+      } else {
+        // Attempt is still valid — resume it with authoritative server time.
+        if (authRemaining !== null) existingInProgress.remainingSeconds = authRemaining;
+        const authSectionTimes = getAuthoritativeSectionTimes(existingInProgress, test);
+        if (authSectionTimes.length > 0) existingInProgress.sectionTimeLeft = authSectionTimes;
+        return res.json({
+          success: true,
+          message: 'Resuming active session.',
+          data: existingInProgress,
+        });
+      }
     }
 
     // Initialize list of questions
@@ -273,12 +301,9 @@ export const submitTest = async (req, res, next) => {
     const test = await Test.findById(attempt.testId).select('duration');
     const startedAt = attempt.startedAt ? new Date(attempt.startedAt).getTime() : null;
     const durationMs = (test?.duration || 0) * MINUTES_TO_MS;
-    if (startedAt && durationMs > 0 && Date.now() > startedAt + durationMs + GRACE_MS) {
-      return res.status(400).json({
-        success: false,
-        code: 'TEST_TIME_EXPIRED',
-        message: 'Your test time has expired. This attempt can no longer be submitted.',
-      });
+    const isExpired = !!(startedAt && durationMs > 0 && Date.now() > startedAt + durationMs + GRACE_MS);
+    if (isExpired) {
+      console.warn('[submitTest] Time expired for attempt', attemptId, '— auto-submitting with current answers.');
     }
 
     // Call analytics service to score and finalize attempt
@@ -338,13 +363,117 @@ export const getAttemptResults = async (req, res, next) => {
   }
 };
 
+export const cleanupOldUnsubmitted = async (req, res, next) => {
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const result = await TestAttempt.deleteMany({ status: 'In Progress', startedAt: { $lt: cutoff } });
+    res.json({ success: true, message: `Deleted ${result.deletedCount || 0} old unsubmitted attempts.` });
+  } catch (error) { next(error); }
+};
+
 export const listStudentHistory = async (req, res, next) => {
   try {
-    const history = await TestAttempt.find({ studentId: req.user._id, status: 'Submitted' })
-      .populate('testId', 'title duration')
-      .sort({ submittedAt: -1 });
+    const limit = parseInt(req.query.limit) || 5;
 
-    res.json({ success: true, data: history });
+    // Use aggregation: group by testId, keep only the latest attempt per test
+    const latestByTest = await TestAttempt.aggregate([
+      { $match: { studentId: req.user._id, status: 'Submitted' } },
+      { $sort: { submittedAt: -1 } },
+      {
+        $group: {
+          _id: '$testId',
+          attemptId: { $first: '$_id' },
+          submittedAt: { $first: '$submittedAt' },
+          score: { $first: '$score' },
+          answers: { $first: '$answers' },
+        },
+      },
+      { $sort: { submittedAt: -1 } },
+      { $limit: limit },
+    ]);
+
+    // Populate test titles in one shot
+    const testIds = latestByTest.map((a) => a._id);
+    const tests = await Test.find({ _id: { $in: testIds } }).select('title').lean();
+    const testMap = {};
+    tests.forEach((t) => { testMap[t._id.toString()] = t.title; });
+
+    // Check which attempts already have flashcards generated
+    const Flashcard = (await import('../models/Flashcard.js')).default;
+    const attemptIds = latestByTest.map((a) => a.attemptId);
+    const existingCards = await Flashcard.aggregate([
+      { $match: { userId: req.user._id, attemptId: { $in: attemptIds } } },
+      { $group: { _id: '$attemptId', count: { $sum: 1 } } },
+    ]);
+    const cardCountMap = {};
+    existingCards.forEach((c) => { cardCountMap[c._id?.toString() || 'null'] = c.count; });
+
+    const data = latestByTest.map((h) => {
+      const answers = h.answers || [];
+      const wrongCount = answers.filter((a) => a.isCorrect === false && a.selectedAnswer?.length > 0).length;
+      return {
+        _id: h.attemptId,
+        testId: { _id: h._id, title: testMap[h._id.toString()] || 'Unknown Test' },
+        submittedAt: h.submittedAt,
+        score: h.score,
+        totalQuestions: answers.length,
+        wrongCount,
+        cardsGenerated: cardCountMap[h.attemptId.toString()] || 0,
+      };
+    });
+
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Re-score a single attempt (admin only). Useful when scoring logic is updated.
+ */
+export const rescoreAttempt = async (req, res, next) => {
+  try {
+    const { attemptId } = req.params;
+    const attempt = await TestAttempt.findById(attemptId);
+    if (!attempt) {
+      return res.status(404).json({ success: false, message: 'Attempt not found' });
+    }
+
+    const rescored = await calculateAttemptAnalytics(attemptId);
+
+    res.json({
+      success: true,
+      message: 'Attempt re-scored successfully.',
+      data: rescored,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Re-score ALL submitted attempts for a test (admin only).
+ */
+export const rescoreAllAttempts = async (req, res, next) => {
+  try {
+    const { testId } = req.params;
+    const attempts = await TestAttempt.find({ testId, status: 'Submitted' });
+    const results = [];
+
+    for (const att of attempts) {
+      try {
+        const rescored = await calculateAttemptAnalytics(att._id);
+        results.push({ attemptId: att._id.toString(), score: rescored.score, status: 'ok' });
+      } catch (e) {
+        results.push({ attemptId: att._id.toString(), status: 'error', message: e.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Re-scored ${results.length} attempts.`,
+      data: results,
+    });
   } catch (error) {
     next(error);
   }

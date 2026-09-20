@@ -109,7 +109,8 @@ export const checkout = async (req, res, next) => {
     const order = await Order.create({
       user: req.user._id,
       type,
-      ...(type === 'plan' ? { plan: entity._id } : { testSeries: entity._id }),
+      ...(type === 'plan' ? { plan: entity._id } : {}),
+      ...(type === 'test_series' ? { testSeries: entity._id } : {}),
       amount: payable,
       subtotal: amount,
       couponCode: coupon?.code,

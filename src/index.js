@@ -38,10 +38,13 @@ import errorLogRoutes from './routes/errorLogRoutes.js';
 import customTestRoutes from './routes/customTestRoutes.js';
 import searchRoutes from './routes/searchRoutes.js';
 import mobileRoutes from './routes/mobileRoutes.js';
+import courseRequestRoutes from './routes/courseRequestRoutes.js';
+import aiRoutes from './routes/aiRoutes.js';
 import partnerRoutes from './routes/partnerRoutes.js';
 import adminPartnerRoutes from './routes/adminPartnerRoutes.js';
 import eventRoutes from './routes/eventRoutes.js';
 import questionReportRoutes from './routes/questionReportRoutes.js';
+import flashcardRoutes from './routes/flashcardRoutes.js';
 import { startKeepAlive } from './jobs/keepAlive.js';
 import { startUnverifiedUserCleanup } from './jobs/unverifiedUserCleanup.js';
 
@@ -77,6 +80,8 @@ import './models/PartnerTestSeries.js';
 import './models/PartnerMessage.js';
 import './models/Event.js';
 import './models/QuestionReport.js';
+import './models/TestAttempt.js';
+import './models/Flashcard.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -114,6 +119,7 @@ app.use(passport.initialize());
 // The analytics track endpoint is skipped here — it has its own tighter limiter and must never
 // consume the shared per-IP bucket (a busy shared network would otherwise 429 everyone).
 app.use('/api', (req, res, next) => {
+  if (req.method === 'OPTIONS') return next();
   if (req.path.startsWith('/analytics/track')) return next();
   apiLimiter(req, res, next);
 });
@@ -161,10 +167,13 @@ app.use('/api/errors', errorLogRoutes);
 app.use('/api/custom-tests', customTestRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/mobile', mobileRoutes);
+app.use('/api/course-requests', courseRequestRoutes);
+app.use('/api/ai', aiRoutes);
 app.use('/api/partner', partnerRoutes);
 app.use('/api/admin/partner', adminPartnerRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/question-reports', questionReportRoutes);
+app.use('/api/revision', flashcardRoutes);
 
 // Test endpoint
 app.get('/health', (req, res) => {
